@@ -123,15 +123,19 @@ if ask_yes_no "Create a backup before uninstalling?"; then
 
     print_info "Backing up all server databases..."
 
-    if docker ps 2>/dev/null | grep -q "ac_database" || \
-       sudo docker ps 2>/dev/null | grep -q "ac_database"; then
+    if docker ps 2>/dev/null | grep -qiE "ac.database|ac_database" || \
+       sudo docker ps 2>/dev/null | grep -qiE "ac.database|ac_database"; then
 
-        docker exec ac_database mysqldump \
-            -uroot -pazeroth \
+        # Detect actual container name
+        BACKUP_DB=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -iE "ac.database|ac_database" | head -1)
+        BACKUP_DB="${BACKUP_DB:-acore-docker-ac-database-1}"
+
+        docker exec "$BACKUP_DB" mysqldump \
+            -uroot -ppassword \
             --databases acore_characters acore_auth acore_world \
             > "$BACKUP_DIR/full_server_backup.sql" 2>/dev/null || \
-        sudo docker exec ac_database mysqldump \
-            -uroot -pazeroth \
+        sudo docker exec "$BACKUP_DB" mysqldump \
+            -uroot -ppassword \
             --databases acore_characters acore_auth acore_world \
             > "$BACKUP_DIR/full_server_backup.sql" 2>/dev/null || true
 
@@ -201,7 +205,7 @@ if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
     print_success "Server stopped and containers removed"
 else
     # Try to stop containers directly if compose file is missing
-    for container in ac_worldserver ac_authserver ac_database; do
+    for container in acore-docker-ac-worldserver-1 acore-docker-ac-authserver-1 acore-docker-ac-database-1; do
         if docker ps -a 2>/dev/null | grep -q "$container"; then
             docker stop "$container" 2>/dev/null || \
             sudo docker stop "$container" 2>/dev/null || true
@@ -218,9 +222,9 @@ fi
 print_step "STEP 2/4 — Removing Docker Images"
 
 IMAGES=(
-    "azerothcore/azerothcore:worldserver"
-    "azerothcore/azerothcore:authserver"
-    "azerothcore/azerothcore:database"
+    "acore/ac-worldserver"
+    "acore/ac-authserver"
+    "acore/ac-db-import"
     "mysql:8.0"
 )
 
@@ -280,7 +284,7 @@ if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
     echo -e "${CYAN}Your backup is saved at:${NC}"
     echo -e "  ${CYAN}$BACKUP_DIR/full_server_backup.sql${NC}"
     echo -e "${CYAN}To restore it later, reinstall the server then run:${NC}"
-    echo -e "  ${CYAN}docker exec -i ac_database mysql -uroot -pazeroth < full_server_backup.sql${NC}"
+    echo -e "  ${CYAN}docker exec -i acore-docker-ac-database-1 mysql -uroot -ppassword < full_server_backup.sql${NC}"
     echo ""
 fi
 
