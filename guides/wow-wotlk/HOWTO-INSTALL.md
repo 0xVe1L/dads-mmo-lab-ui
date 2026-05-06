@@ -21,7 +21,7 @@ Make sure you have:
 Open **Konsole** in Desktop Mode and run:
 
 ```bash
-chmod +x install-wow.sh && ./install-wow.sh
+cd ~/Downloads && chmod +x install-wow.sh && ./install-wow.sh
 ```
 
 That's it. The wizard takes over from here.
