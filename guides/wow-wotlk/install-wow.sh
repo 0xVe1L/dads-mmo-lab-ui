@@ -583,6 +583,11 @@ services:
     image: dadsmmolab/playerbots-worldserver:latest
     volumes:
       - ./modules:/azerothcore/modules
+    environment:
+      AC_PLAYERBOTS_UPDATES_ENABLE_DATABASES: "1"
+      AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN: "1"
+      AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: "50"
+      AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: "200"
   ac-authserver:
     image: dadsmmolab/playerbots-authserver:latest
   ac-db-import:
@@ -868,7 +873,8 @@ echo "  Starting server..."
 echo ""
 
 cd "${server_dir}" || exit 1
-docker compose up -d --scale phpmyadmin=0 >> "\$LOGFILE" 2>&1
+docker compose up -d --scale phpmyadmin=0 >> "\$LOGFILE" 2>&1 || \
+docker compose up -d >> "\$LOGFILE" 2>&1
 
 echo "  Containers started!"
 echo ""
