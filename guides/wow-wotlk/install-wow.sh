@@ -810,6 +810,17 @@ echo ""
 echo "  Starting server..."
 echo ""
 
+# Stop any other running WoW servers first
+# Prevents database conflicts between server versions
+RUNNING=\$(docker ps -q 2>/dev/null)
+if [ -n "\$RUNNING" ]; then
+    echo "  Stopping any running servers first..."
+    docker stop \$RUNNING >> "\$LOGFILE" 2>&1 || true
+    sleep 5
+    echo "  All clear!"
+    echo ""
+fi
+
 cd "${server_dir}" || exit 1
 docker compose up -d --scale phpmyadmin=0 >> "\$LOGFILE" 2>&1 || \
 docker compose up -d >> "\$LOGFILE" 2>&1
