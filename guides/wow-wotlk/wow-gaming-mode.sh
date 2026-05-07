@@ -53,6 +53,19 @@ fi
 echo "  Starting server..."
 echo ""
 
+# Stop any other running WoW servers first
+# Only stops AzerothCore containers — never touches other Docker services
+WOW_CONTAINERS=$(docker ps --format '{{.Names}}' 2>/dev/null | \
+    grep -iE "worldserver|authserver|ac-database|ac-eluna|ac-client|ac-db-import" || true)
+
+if [ -n "$WOW_CONTAINERS" ]; then
+    echo "  Stopping any running WoW servers first..."
+    echo "$WOW_CONTAINERS" | xargs docker stop >> "$LOGFILE" 2>&1 || true
+    sleep 5
+    echo "  All clear!"
+    echo ""
+fi
+
 cd "$HOME/wow-server" || exit 1
 
 docker compose up -d --scale phpmyadmin=0 \
