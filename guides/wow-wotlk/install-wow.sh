@@ -391,76 +391,50 @@ choose_server_type() {
 }
 
 # ─────────────────────────────────────────
-# STEP 2 — CHOOSE MODULES
+# STEP 2 — MODULES NOTICE
 # ─────────────────────────────────────────
+# Modules (like Auction House Bot, Solocraft, etc.) require compiling
+# AzerothCore from source, which takes 30-60 minutes on a Steam Deck.
+# Rather than make every install slow, we hand module setup off to a
+# dedicated post-install script: manage-wow-modules.sh
+#
+# This means a fast first install — the user can try the base server
+# right away, then add modules later when they know what they want.
 choose_modules() {
     print_header
-    print_step "STEP 2/6 — Choose Your Modules"
+    print_step "STEP 2/6 — About Modules"
 
     echo ""
-    echo -e "${WHITE}These optional modules add extra features to your server.${NC}"
-    echo -e "${WHITE}Pick what sounds good to you!${NC}"
+    echo -e "${WHITE}Modules add features to your server (AH Bot, Solocraft,${NC}"
+    echo -e "${WHITE}Transmog, Individual Progression, and more).${NC}"
     echo ""
-
-    # AH Bot — available for all server types
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${WHITE}${BOLD}💰 Auction House Bot${NC}"
-    echo -e "  Populates all three Auction Houses with a living economy"
-    echo -e "  Buy and sell items just like a real server"
-    if ask_yes_no "  Install AH Bot?"; then
-        MOD_AHBOT=true
-        print_success "AH Bot added!"
-    fi
+    echo -e "${YELLOW}⚠️  Modules require compiling AzerothCore from source.${NC}"
+    echo -e "${YELLOW}   That takes 30-60 minutes on a Steam Deck.${NC}"
     echo ""
-
-    # Individual Progression — all server types
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${WHITE}${BOLD}📈 Individual Progression${NC}"
-    echo -e "  Start in Vanilla — unlock TBC then WotLK as you progress"
-    echo -e "  Experience the full WoW story in order"
-    if ask_yes_no "  Install Individual Progression?"; then
-        MOD_PROGRESSION=true
-        print_success "Individual Progression added!"
-    fi
+    echo -e "${WHITE}${BOLD}For a faster first install:${NC}"
+    echo -e "${WHITE}  1. Skip modules for now (recommended)${NC}"
+    echo -e "${WHITE}  2. Finish the base install (~10 minutes)${NC}"
+    echo -e "${WHITE}  3. Run ${CYAN}manage-wow-modules.sh${WHITE} when you want to add modules${NC}"
     echo ""
-
-    # Dungeon Master — all server types
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${WHITE}${BOLD}🏰 Dungeon Master${NC}"
-    echo -e "  Procedural dungeon challenges with roguelike buffs"
-    echo -e "  Extra incentive and variety for dungeon runners"
-    if ask_yes_no "  Install Dungeon Master?"; then
-        MOD_DUNGEON_MASTER=true
-        print_success "Dungeon Master added!"
-    fi
+    echo -e "${WHITE}The module manager handles everything automatically:${NC}"
+    echo -e "${WHITE}  • Cloning the right modules${NC}"
+    echo -e "${WHITE}  • Importing their SQL files${NC}"
+    echo -e "${WHITE}  • Switching to source build mode${NC}"
+    echo -e "${WHITE}  • Rebuilding the worldserver${NC}"
+    echo -e "${WHITE}  • Configuring AH Bot's character (the tricky bit)${NC}"
     echo ""
+    print_info "Continuing with a clean base install — no modules at install time."
 
-    # Solocraft — only for Base WoW
-    if [ "$SERVER_TYPE" = "base" ]; then
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "  ${WHITE}${BOLD}☀️  Solocraft${NC}"
-        echo -e "  ${GREEN}Perfect for Base WoW!${NC}"
-        echo -e "  Dynamically scales dungeon and raid difficulty for 1 player"
-        echo -e "  Clear Molten Core SOLO — no bots needed"
-        if ask_yes_no "  Install Solocraft?"; then
-            MOD_SOLOCRAFT=true
-            print_success "Solocraft added!"
-        fi
-        echo ""
-    fi
+    # Make sure all module flags are off so downstream installer code
+    # doesn't try to clone or wire anything up.
+    MOD_AHBOT=false
+    MOD_PROGRESSION=false
+    MOD_DUNGEON_MASTER=false
+    MOD_SOLOCRAFT=false
+    MOD_BOT_WANDER=false
 
-    # Bot Wandering — only for NPCBots
-    if [ "$SERVER_TYPE" = "npcbots" ]; then
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "  ${WHITE}${BOLD}🤖 Wandering Bots (500 bots)${NC}"
-        echo -e "  AI bots roam the open world — Azeroth feels populated"
-        echo -e "  See bots questing, fighting and exploring everywhere"
-        if ask_yes_no "  Enable wandering bots?"; then
-            MOD_BOT_WANDER=true
-            print_success "Wandering Bots enabled!"
-        fi
-        echo ""
-    fi
+    echo ""
+    press_enter
 }
 
 # ─────────────────────────────────────────
@@ -690,7 +664,9 @@ OVERRIDE
             cat > "$SERVER_DIR/docker-compose.override.yml" << 'OVERRIDE'
 services:
   ac-worldserver:
-    image: dadsmmolab/playerbots-worldserver:latest
+    build:
+      context: .
+      target: worldserver
     volumes:
       - ./modules:/azerothcore/modules
     environment:
@@ -699,11 +675,17 @@ services:
       AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: "50"
       AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: "200"
   ac-authserver:
-    image: dadsmmolab/playerbots-authserver:latest
+    build:
+      context: .
+      target: authserver
   ac-db-import:
-    image: dadsmmolab/playerbots-db-import:latest
+    build:
+      context: .
+      target: db-import
   ac-client-data-init:
-    image: dadsmmolab/playerbots-client-data:latest
+    build:
+      context: .
+      target: client-data
 OVERRIDE
 
             print_info "Compiling Playerbots server (2-4 hours)..."
@@ -901,7 +883,7 @@ create_accounts() {
     echo -e "   ${CYAN}docker attach \$(docker ps --format '{{.Names}}' | grep worldserver | head -1)${NC}"
     echo ""
     echo -e "${WHITE}${BOLD}2. Create your account (replace USERNAME and PASSWORD):${NC}"
-    echo -e "   ${GREEN}account create USERNAME PASSWORD PASSWORD${NC}"
+    echo -e "   ${GREEN}account create USERNAME PASSWORD${NC}"
     echo -e "   ${GREEN}account set gmlevel USERNAME 3 -1${NC}"
     echo ""
     echo -e "${WHITE}${BOLD}3. Exit the console safely:${NC}"
@@ -1156,6 +1138,22 @@ show_completion() {
     echo -e "${WHITE}  ☕ ko-fi.com/dadsmmolab${NC}"
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+
+    # ── Pointer to the module manager ─────────────────────────
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${WHITE}${BOLD} 💡 Want AH Bot, Solocraft, Transmog, or other modules?${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  Run the module manager any time after install:"
+    echo -e "  ${GREEN}${BOLD}bash manage-wow-modules.sh${NC}"
+    echo ""
+    echo -e "  It auto-detects your server, lets you add/remove modules,"
+    echo -e "  and walks you through AH Bot's bot-character setup."
+    echo ""
+    echo -e "  ${YELLOW}Note: adding modules requires recompiling AzerothCore.${NC}"
+    echo -e "  ${YELLOW}First module add: 30-60 min on Steam Deck.${NC}"
+    echo ""
+
     echo -e "${GREEN}${BOLD}Welcome to Azeroth. It's yours now. Forever. ⚔️${NC}"
     echo ""
     echo -e "${YELLOW}  ℹ️  Your server is still running right now!${NC}"
