@@ -51,8 +51,8 @@ Turns out — for a lot of classic MMOs — you can. The emulator community has 
 | Game | Emulator | Bot Support | Status | Guide |
 |------|----------|-------------|--------|-------|
 | ⚔️ WoW WotLK 3.3.5a (Standard) | AzerothCore | Playerbots | ✅ Complete | [View Guide](./guides/wow-wotlk/README.md) |
-| ⚔️ WoW WotLK 3.3.5a (NPCBots) | AzerothCore + trickerer fork | NPCBots | ✅ Complete | [View Guide](./guides/wow-wotlk-npcbots/README.md) |
-| 🌿 Ragnarok Online | rAthena | — | ✅ Working | Guide coming soon |
+| ⚔️ WoW WotLK 3.3.5a (Playerbots) | AzerothCore + trickerer fork | Playerbots | ✅ Complete | [View Guide](./guides/wow-wotlk-npcbots/README.md) |
+| 🏃 RuneScape 2009 | 2009scape | — | ✅ Complete | [View Guide](./guides/runescape/README.md) |
 
 ---
 
@@ -60,11 +60,12 @@ Turns out — for a lot of classic MMOs — you can. The emulator community has 
 
 | Game | Emulator | Status |
 |------|----------|--------|
-| 🐉 Monster Hunter Frontier Z | Erupe CE | 🔨 Building |
-| ⚔️ WoW Vanilla 1.12 | VMaNGOS | 🔨 Planned — easy build |
-| ⚔️ WoW The Burning Crusade | TrinityCore | 🔨 Planned — easy build |
-| 🏰 Dark Age of Camelot | OpenDAoC | 🔨 Docker ready — coming soon |
-| 🎮 Warframe | OpenWF / SpaceNinjaServer | 🔨 Researching |
+| 🐉 Monster Hunter Frontier Z | Erupe CE | 🔨 In Progress |
+| ⚔️ WoW Vanilla 1.12 | VMaNGOS | 🔨 In Progress |
+| ⚔️ WoW The Burning Crusade | TrinityCore | 🔨 In Progress |
+| 🌿 Ragnarok Online | rAthena | 🔨 In Progress |
+| 💎 Mu Online | OpenMU | 🔨 In Progress |
+| 🏰 Dark Age of Camelot | OpenDAoC | 🔨 In Progress |
 
 ---
 
@@ -75,7 +76,6 @@ Turns out — for a lot of classic MMOs — you can. The emulator community has 
 | 🍄 MapleStory (v83 Pre-Big Bang) | Cosmic | Wife's pick 👩 |
 | ⚡ PSO Blue Burst | newserv / Archon | Steam Deck proven |
 | 🌌 Phantasy Star Universe | Clementine | Community server |
-| 💎 Mu Online | OpenMU | Docker native |
 | 🧱 LEGO Universe | Darkflame Universe | For the kids |
 | 🏨 Habbo Hotel | Havana | Browser client |
 | ⚔️ Tibia | The Forgotten Server | |
@@ -85,10 +85,10 @@ Turns out — for a lot of classic MMOs — you can. The emulator community has 
 | 🏰 EverQuest 1 | EQEmu | |
 | 🚀 Star Wars Galaxies | SWGEmu | |
 | ⚔️ Lineage 2 | L2J / Mobius | |
-| 🌐 Ultima Online | ServUO | |
+| 🌐 Ultima Online | ModernUO + ClassicUO | Linux native client — no Proton needed |
 | 🦸 City of Heroes | Homecoming | |
 | 🏹 Asheron's Call | ACEmulator | |
-| 🌿 RuneScape (2006-2012) | 2009Scape / Darkan | |
+| 🗝️ RuneScape Classic | OpenRSC | Coming Soon — the original 2001 era |
 
 ---
 
@@ -99,15 +99,21 @@ Turns out — for a lot of classic MMOs — you can. The emulator community has 
 | File | What it does |
 |------|-------------|
 | `install.sh` | Full automated installer — one command does everything |
-| `install-npcbots.sh` | NPCBots version — compiles from source (2-4 hours) |
+| `install-playerbots.sh` | Playerbots version — compiles from source (2-4 hours) |
 | `uninstall.sh` | Safe removal with character backup |
 | `docker-compose.yml` | Server configuration |
 | `wow-gaming-mode.sh` | Gaming Mode launcher — auto-shuts down with WoW |
-| `migrate.sh` | Move characters and accounts between server versions |
 | `fix-after-update.sh` | Fix Docker after a SteamOS update breaks it |
 | `HOWTO-INSTALL.md` | Beginner install guide — zero Linux knowledge needed |
 | `HOWTO-UNINSTALL.md` | Beginner uninstall guide |
 | `HOWTO-DESKTOP-CONTROLS.md` | Full Desktop Mode control guide with GM console |
+
+### RuneScape Guide (`guides/runescape/`)
+
+| File | What it does |
+|------|-------------|
+| `install-runescape.sh` | Full automated installer — one command does everything |
+| `README.md` | Install guide — zero Linux knowledge needed |
 
 ---
 
@@ -132,13 +138,13 @@ The installer handles everything automatically:
 
 Two different bot systems — pick the experience you want:
 
-| | Standard | NPCBots |
+| | Standard | Playerbots |
 |---|---|---|
-| **Script** | `install.sh` | `install-npcbots.sh` |
-| **Bots** | Playerbots (roam the world) | NPCBots (hired companions) |
+| **Script** | `install.sh` | `install-playerbots.sh` |
+| **Bots** | Playerbots (roam the world) | Playerbots (hired companions) |
 | **Feel** | Living populated world | Personal party members |
 | **Install time** | ~30 minutes | 2-4 hours (compiles from source) |
-| **Folder** | `~/wow-server` | `~/wow-server-npcbots` |
+| **Folder** | `~/wow-server` | `~/wow-server-playerbots` |
 
 ---
 
@@ -154,21 +160,6 @@ Play entirely from Steam Gaming Mode — no Desktop Mode needed after setup:
 6. Close WoW → **server auto-shuts down**
 
 Full setup instructions in [HOWTO-INSTALL.md](./guides/wow-wotlk/HOWTO-INSTALL.md)
-
----
-
-## 🔀 Character Migration
-
-Move characters and accounts between server versions:
-
-```bash
-chmod +x migrate.sh && ./migrate.sh
-```
-
-- Migrate full account + all characters between servers
-- Copy a single character to another server
-- Move characters between accounts on the same server
-- Automatic backups before every operation
 
 ---
 
@@ -218,6 +209,7 @@ This project:
 Huge credit to the communities that make this possible:
 - **[AzerothCore](https://github.com/azerothcore/azerothcore-wotlk)** — the incredible open source WoW emulator
 - **[trickerer](https://github.com/trickerer/AzerothCore-wotlk-with-NPCBots)** — the NPCBots fork
+- **[2009scape](https://github.com/2009scape/2009scape)** — the RuneScape 2009 emulator
 - Every emulator project linked in our guides
 
 Go give them a star. They deserve it.
