@@ -9,6 +9,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { useServerState } from "@/components/server-state-context"
+import { cn } from "@/lib/utils"
 
 export function NavSecondary({
   items,
@@ -20,12 +22,19 @@ export function NavSecondary({
     icon: React.ReactNode
   }[]
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  const { installed } = useServerState()
+  const disabledClass = !installed ? "pointer-events-none opacity-50" : undefined
+
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
+            <SidebarMenuItem
+              key={item.title}
+              className={cn(disabledClass)}
+              aria-disabled={!installed}
+            >
               <SidebarMenuButton asChild>
                 <a href={item.url}>
                   {item.icon}

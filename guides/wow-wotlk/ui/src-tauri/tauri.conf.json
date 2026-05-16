@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ui",
+  "productName": "WoW 3.3.5a Server | Dad's MMO Lab",
   "version": "0.1.0",
   "identifier": "com.dads-mmo-lab-wotlk.ui",
   "build": {
@@ -14,9 +14,9 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "ui",
-        "width": 1400,
-        "height": 918,
+        "title": "WoW 3.3.5a Server | Dad's MMO Lab",
+        "width": 1280,
+        "height": 800,
         "center": true,
         "visible": false
       }

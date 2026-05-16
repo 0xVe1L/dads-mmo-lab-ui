@@ -13,7 +13,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { SquaresFourIcon, ListIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, GearIcon, QuestionIcon, MagnifyingGlassIcon, DatabaseIcon, ChartLineIcon, FileIcon, CommandIcon } from "@phosphor-icons/react"
+import { SquaresFourIcon, ListIcon, ChartBarIcon, FolderIcon, SwordIcon, UsersIcon, CameraIcon, FileTextIcon, GearIcon, QuestionIcon, MagnifyingGlassIcon, DatabaseIcon, ChartLineIcon, FileIcon } from "@phosphor-icons/react"
+import { WowIcon } from "@/components/wow-icon"
 
 const data = {
   user: {
@@ -148,10 +149,10 @@ const data = {
   ],
   documents: [
     {
-      name: "Data Library",
+      name: "Gear Library",
       url: "#",
       icon: (
-        <DatabaseIcon
+        <SwordIcon
         />
       ),
     },
@@ -185,8 +186,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
               <a href="#">
-                <CommandIcon className="size-5!" />
-                <span className="text-base font-semibold">Acme Inc.</span>
+                <WowIcon size={20} />
+                <span className="text-base font-semibold">WoW 3.3.5a Server</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

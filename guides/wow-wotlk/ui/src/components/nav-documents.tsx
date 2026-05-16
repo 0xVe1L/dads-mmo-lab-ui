@@ -18,6 +18,9 @@ import {
 } from "@/components/ui/sidebar"
 import { DotsThreeOutlineIcon, FolderIcon, ShareIcon, TrashIcon } from "@phosphor-icons/react"
 
+import { useServerState } from "@/components/server-state-context"
+import { cn } from "@/lib/utils"
+
 export function NavDocuments({
   items,
 }: {
@@ -28,13 +31,19 @@ export function NavDocuments({
   }[]
 }) {
   const { isMobile } = useSidebar()
+  const { installed } = useServerState()
+  const disabledClass = !installed ? "pointer-events-none opacity-50" : undefined
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>Documents</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
-          <SidebarMenuItem key={item.name}>
+          <SidebarMenuItem
+            key={item.name}
+            className={cn(disabledClass)}
+            aria-disabled={!installed}
+          >
             <SidebarMenuButton asChild>
               <a href={item.url}>
                 {item.icon}
@@ -77,7 +86,10 @@ export function NavDocuments({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        <SidebarMenuItem>
+        <SidebarMenuItem
+          className={cn(disabledClass)}
+          aria-disabled={!installed}
+        >
           <SidebarMenuButton className="text-sidebar-foreground/70">
             <DotsThreeOutlineIcon className="text-sidebar-foreground/70" />
             <span>More</span>
