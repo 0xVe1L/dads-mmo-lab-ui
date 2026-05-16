@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { useServerState } from "@/components/server-state-context"
 import { cn } from "@/lib/utils"
 
 type ServerType = "base" | "npcbots" | "playerbots"
@@ -103,6 +104,7 @@ export function InstallOnboarding({
 }) {
   const [step, setStep] = React.useState(0)
   const [state, setState] = React.useState<FormState>(DEFAULT_STATE)
+  const { startInstall } = useServerState()
 
   // Reset state when the dialog closes so reopening starts fresh
   React.useEffect(() => {
@@ -120,8 +122,23 @@ export function InstallOnboarding({
   const selectedModules = MODULES.filter((m) => state.modules[m.key])
 
   const advance = () => {
-    if (isLast) onOpenChange(false)
-    else setStep((s) => s + 1)
+    if (isLast) {
+      // Close the modal and hand off to the install console. Modules are
+      // recorded in the form state but not passed to the script — the
+      // installer keeps the same flow as install-wow.sh, which defers
+      // module installation to the post-install module manager.
+      onOpenChange(false)
+      void startInstall({
+        serverType: state.serverType,
+        adminUser: state.adminUser,
+        adminPass: state.adminPass,
+        // playerbots always compiles; npcbots defaults to prebuilt in the
+        // script if omitted. Leaving buildMethod undefined lets the script
+        // pick its own default.
+      })
+      return
+    }
+    setStep((s) => s + 1)
   }
 
   return (

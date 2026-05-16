@@ -3,6 +3,7 @@ import type { CSSProperties } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { DemoDashboard } from "@/components/demo-dashboard"
 import { InstallOnboarding } from "@/components/install-onboarding"
+import { InstallProgressScreen } from "@/components/install-progress-screen"
 import {
   ServerStateProvider,
   useServerState,
@@ -23,7 +24,27 @@ export default function App() {
 }
 
 function AppShell() {
-  const { installed, installOpen, setInstallOpen } = useServerState()
+  const { installed, installOpen, setInstallOpen, installStatus } =
+    useServerState()
+
+  // While the installer is running or has just finished, the console takes
+  // over the main pane so the user can watch it finish.
+  const showInstallScreen = installStatus !== "idle"
+
+  const title = showInstallScreen
+    ? "Installing"
+    : installed
+      ? "Documents"
+      : "Welcome!"
+
+  let mainContent
+  if (showInstallScreen) {
+    mainContent = <InstallProgressScreen />
+  } else if (installed) {
+    mainContent = <DemoDashboard />
+  } else {
+    mainContent = <WelcomeScreen />
+  }
 
   return (
     <>
@@ -37,10 +58,8 @@ function AppShell() {
       >
         <AppSidebar variant="inset" />
         <SidebarInset>
-          <SiteHeader title={installed ? "Documents" : "Welcome!"} />
-          <div className="flex flex-1 flex-col">
-            {installed ? <DemoDashboard /> : <WelcomeScreen />}
-          </div>
+          <SiteHeader title={title} />
+          <div className="flex flex-1 flex-col">{mainContent}</div>
         </SidebarInset>
       </SidebarProvider>
       <InstallOnboarding open={installOpen} onOpenChange={setInstallOpen} />

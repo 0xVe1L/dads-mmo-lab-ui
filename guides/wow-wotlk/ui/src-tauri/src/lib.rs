@@ -1,6 +1,9 @@
 use tauri::webview::PageLoadEvent;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
+
+mod install;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -48,7 +51,13 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .plugin(external_navigation_plugin())
-        .invoke_handler(tauri::generate_handler![greet])
+        .manage(install::InstallState::default())
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            install::detect_installs,
+            install::start_install,
+            install::cancel_install
+        ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
                 log::info!("main webview finished loading");
