@@ -61,7 +61,8 @@ pub fn run() {
             install::cancel_install,
             server::get_server_status,
             server::start_server,
-            server::stop_server
+            server::stop_server,
+            server::restart_server
         ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {

@@ -49,9 +49,16 @@ pub enum WorldserverStatus {
     NotPresent,
     /// Container exists but is not running.
     Stopped,
-    /// Container is running but the worldserver hasn't logged "ready..." yet.
+    /// Container is running but not yet accepting connections — the
+    /// worldserver process is still initialising.
     Starting,
-    /// Container is running and the worldserver has logged "ready...".
+    /// Container is in docker's `restarting` state — almost always means
+    /// the worldserver process is segfaulting / exiting on launch and
+    /// docker's restart policy keeps re-spawning it. UI surfaces this so
+    /// the user sees "crashed" instead of "starting…" forever.
+    Crashed,
+    /// Container is running and accepting TCP connections on the
+    /// worldserver port.
     Running,
 }
 
@@ -94,14 +101,24 @@ fn worldserver_container_name() -> Option<String> {
         .map(|s| s.to_string())
 }
 
-fn is_container_running(name: &str) -> bool {
-    let Ok(out) = std::process::Command::new("docker")
-        .args(["inspect", "--format", "{{.State.Running}}", name])
+/// Returns docker's reported container state for `name` — one of
+/// `created`, `running`, `paused`, `restarting`, `removing`, `exited`,
+/// `dead`. None on error or unknown container.
+///
+/// We deliberately read `.State.Status` rather than `.State.Running`:
+/// `.State.Running` returns `true` for both `running` *and* `restarting`,
+/// which means a container in a crash loop looks identical to a healthy
+/// running container. `.State.Status` distinguishes them, which is the
+/// only way the UI can tell "still booting" apart from "crash-looping".
+fn container_state(name: &str) -> Option<String> {
+    let out = std::process::Command::new("docker")
+        .args(["inspect", "--format", "{{.State.Status}}", name])
         .output()
-    else {
-        return false;
-    };
-    out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "true"
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 /// Returns true if the compose stack at `install_path` defines a service
@@ -149,15 +166,18 @@ pub fn get_server_status() -> Result<ServerStatus, String> {
 
     let worldserver = match container {
         None => WorldserverStatus::NotPresent,
-        Some(name) => {
-            if !is_container_running(&name) {
-                WorldserverStatus::Stopped
-            } else if worldserver_accepts_connections() {
-                WorldserverStatus::Running
-            } else {
-                WorldserverStatus::Starting
+        Some(name) => match container_state(&name).as_deref() {
+            Some("running") => {
+                if worldserver_accepts_connections() {
+                    WorldserverStatus::Running
+                } else {
+                    WorldserverStatus::Starting
+                }
             }
-        }
+            Some("restarting") => WorldserverStatus::Crashed,
+            // exited / created / paused / dead / removing / unknown / None
+            _ => WorldserverStatus::Stopped,
+        },
     };
 
     Ok(ServerStatus {
@@ -180,10 +200,19 @@ async fn spawn_compose(
         }
     }
 
+    // Do NOT pass `-f docker-compose.yml` here. Per the Docker Compose
+    // docs, passing `-f` explicitly disables auto-detection of
+    // `docker-compose.override.yml` — and the Playerbots install relies
+    // on the override for the `./modules:/azerothcore/modules` mount and
+    // the `AC_PLAYERBOTS_*` env vars. Without those the worldserver
+    // can't find its module source and segfaults in a restart loop.
+    //
+    // Relying on `current_dir` is what the canonical install +
+    // wow-playerbots-launcher.sh scripts do; it picks up both compose
+    // files automatically. The 2026-05-17 incident traced back to this
+    // exact divergence — see the post-mortem in the dev log.
     let mut cmd = Command::new("docker");
     cmd.arg("compose")
-        .arg("-f")
-        .arg(install_path.join("docker-compose.yml"))
         .args(extra_args)
         .current_dir(install_path)
         .stdout(Stdio::piped())
@@ -299,11 +328,20 @@ async fn wait_for_world_ready(app: &AppHandle) -> Result<(), String> {
     let mut elapsed = 0u64;
     loop {
         if let Some(name) = worldserver_container_name() {
-            if !is_container_running(&name) {
-                return Err(format!(
-                    "worldserver container '{}' is not running",
-                    name
-                ));
+            match container_state(&name).as_deref() {
+                Some("running") => {} // ok — fall through to TCP check
+                Some("restarting") => {
+                    return Err(format!(
+                        "worldserver container '{}' is crash-looping. Check `docker logs {}` for the cause.",
+                        name, name
+                    ));
+                }
+                _ => {
+                    return Err(format!(
+                        "worldserver container '{}' is not running",
+                        name
+                    ));
+                }
             }
             if worldserver_accepts_connections() {
                 let _ = app.emit(
@@ -367,6 +405,110 @@ pub async fn stop_server(
     let install_path = first_install_path()
         .ok_or_else(|| "no install detected".to_string())?;
     spawn_compose("stop", app, state, &install_path, &["down"]).await
+}
+
+/// Restart in one shot: `docker compose down && docker compose up -d`
+/// run as a single bash invocation so the UI gets one streamed action
+/// and one `server:done` event. The combined command handles the
+/// recovery case where the user's container is stuck in a bad state —
+/// equivalent to clicking Stop then Start, but one click and no risk
+/// of forgetting the second half.
+#[tauri::command]
+pub async fn restart_server(
+    app: AppHandle,
+    state: State<'_, ServerControlState>,
+) -> Result<(), String> {
+    let install_path = first_install_path()
+        .ok_or_else(|| "no install detected".to_string())?;
+
+    {
+        let guard = state.running_pid.lock().unwrap();
+        if guard.is_some() {
+            return Err("a server action is already running".into());
+        }
+    }
+
+    let stdout_handle;
+    let stderr_handle;
+    let pid;
+    let mut child;
+    {
+        let mut cmd = Command::new("bash");
+        cmd.arg("-c")
+            .arg("docker compose down && docker compose up -d")
+            .current_dir(&install_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .stdin(Stdio::null());
+        #[cfg(unix)]
+        cmd.process_group(0);
+        child = cmd
+            .spawn()
+            .map_err(|e| format!("spawn docker compose (restart): {e}"))?;
+        pid = child.id().ok_or("could not read child PID")?;
+        let stdout = child.stdout.take().ok_or("missing stdout pipe")?;
+        let stderr = child.stderr.take().ok_or("missing stderr pipe")?;
+        // Same neutral coloring as the regular start/stop — compose
+        // writes lifecycle messages to stderr but they're informational.
+        stdout_handle = tokio::spawn(forward_lines(stdout, app.clone(), "stdout"));
+        stderr_handle = tokio::spawn(forward_lines(stderr, app.clone(), "stdout"));
+    }
+
+    {
+        let mut guard = state.running_pid.lock().unwrap();
+        *guard = Some(pid);
+    }
+
+    let app_done = app.clone();
+    tokio::spawn(async move {
+        let result = child.wait().await;
+        if let Some(state) = app_done.try_state::<ServerControlState>() {
+            let mut guard = state.running_pid.lock().unwrap();
+            *guard = None;
+        }
+        let _ = stdout_handle.await;
+        let _ = stderr_handle.await;
+
+        // After the compose up half, wait for the worldserver to be
+        // ready — same pattern as start.
+        let mut wait_success = true;
+        let mut wait_message: Option<String> = None;
+        if let Ok(s) = &result {
+            if s.success() {
+                if let Err(e) = wait_for_world_ready(&app_done).await {
+                    wait_success = false;
+                    wait_message = Some(e);
+                }
+            }
+        }
+
+        match result {
+            Ok(status) => {
+                let _ = app_done.emit(
+                    EVT_DONE,
+                    DoneEvent {
+                        action: "restart",
+                        success: status.success() && wait_success,
+                        code: status.code(),
+                        message: wait_message,
+                    },
+                );
+            }
+            Err(e) => {
+                let _ = app_done.emit(
+                    EVT_DONE,
+                    DoneEvent {
+                        action: "restart",
+                        success: false,
+                        code: None,
+                        message: Some(format!("wait failed: {e}")),
+                    },
+                );
+            }
+        }
+    });
+
+    Ok(())
 }
 
 async fn forward_lines<R: AsyncRead + Unpin>(

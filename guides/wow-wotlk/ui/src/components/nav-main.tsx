@@ -7,11 +7,22 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { Button } from "@/components/ui/button"
+import { ButtonGroup } from "@/components/ui/button-group"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  ArrowClockwiseIcon,
   ArrowRightIcon,
+  CaretDownIcon,
   FloppyDiskBackIcon,
   PlayIcon,
   StopIcon,
+  WarningCircleIcon,
 } from "@phosphor-icons/react"
 import { LottieLoop } from "@/components/lottie-loop"
 import { useServerState } from "@/components/server-state-context"
@@ -33,62 +44,37 @@ export function NavMain({
     serverActionStatus,
     startServer,
     stopServer,
+    restartServer,
   } = useServerState()
 
-  // Sidebar button reflects (in order): in-flight server action > the
-  // worldserver's runtime status > install-not-yet-done. That mirrors
-  // the user's mental model — "what should I do next?".
   const actionInFlight = serverActionStatus === "running"
-
-  let label: string
-  let leadingIcon: React.ReactNode
-  let trailingIcon: React.ReactNode = <ArrowRightIcon />
-  let onClick: () => void
-  let disabled = false
-
-  if (!installed) {
-    label = "INSTALL SERVER"
-    leadingIcon = <FloppyDiskBackIcon />
-    onClick = openInstall
-  } else if (actionInFlight) {
-    label = "WORKING…"
-    leadingIcon = <LottieLoop animationData={loadingAnimation} className="size-5" />
-    trailingIcon = null
-    onClick = () => {}
-    disabled = true
-  } else if (worldserverStatus === "starting") {
-    label = "STARTING…"
-    leadingIcon = <LottieLoop animationData={loadingAnimation} className="size-5" />
-    trailingIcon = null
-    onClick = () => {}
-    disabled = true
-  } else if (worldserverStatus === "running") {
-    label = "STOP SERVER"
-    leadingIcon = <StopIcon />
-    onClick = () => void stopServer()
-  } else {
-    // stopped, notpresent (containers wiped but install dir exists), or
-    // still-checking — treat all as "needs starting".
-    label = "START SERVER"
-    leadingIcon = <PlayIcon />
-    onClick = () => void startServer()
-  }
+  // "Stop" or "Restart" is meaningful when the server is up or thrashing.
+  // We show the button-group + dropdown variant in both of those states.
+  const showStopGroup =
+    installed &&
+    !actionInFlight &&
+    (worldserverStatus === "running" || worldserverStatus === "crashed")
 
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
         <SidebarMenu>
           <SidebarMenuItem className="flex items-center gap-2">
-            <SidebarMenuButton
-              tooltip={label}
-              onClick={onClick}
-              disabled={disabled}
-              className="min-w-8 h-10! text-sm bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground [&_svg]:size-5! [&>svg:last-of-type]:ml-auto"
-            >
-              {leadingIcon}
-              <span>{label}</span>
-              {trailingIcon}
-            </SidebarMenuButton>
+            {showStopGroup ? (
+              <StopRestartButtonGroup
+                isCrashed={worldserverStatus === "crashed"}
+                onStop={() => void stopServer()}
+                onRestart={() => void restartServer()}
+              />
+            ) : (
+              <PrimaryServerButton
+                installed={installed}
+                actionInFlight={actionInFlight}
+                worldserverStatus={worldserverStatus}
+                onInstall={openInstall}
+                onStart={() => void startServer()}
+              />
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarMenu>
@@ -103,5 +89,114 @@ export function NavMain({
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
+  )
+}
+
+// Shared className for the primary sidebar button "look" — we reuse it
+// on both the SidebarMenuButton variant and the ButtonGroup variant so
+// the button doesn't visually morph when its mode changes.
+const PRIMARY_BUTTON_CLASS =
+  "min-w-8 h-10! text-sm bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground [&_svg]:size-5! [&>svg:last-of-type]:ml-auto"
+
+function PrimaryServerButton({
+  installed,
+  actionInFlight,
+  worldserverStatus,
+  onInstall,
+  onStart,
+}: {
+  installed: boolean
+  actionInFlight: boolean
+  worldserverStatus: ReturnType<typeof useServerState>["worldserverStatus"]
+  onInstall: () => void
+  onStart: () => void
+}) {
+  let label: string
+  let leadingIcon: React.ReactNode
+  let trailingIcon: React.ReactNode = <ArrowRightIcon />
+  let onClick: () => void
+  let disabled = false
+
+  if (!installed) {
+    label = "INSTALL SERVER"
+    leadingIcon = <FloppyDiskBackIcon />
+    onClick = onInstall
+  } else if (actionInFlight) {
+    label = "WORKING…"
+    leadingIcon = <LottieLoop animationData={loadingAnimation} className="size-5" />
+    trailingIcon = null
+    onClick = () => {}
+    disabled = true
+  } else if (worldserverStatus === "starting") {
+    label = "STARTING…"
+    leadingIcon = <LottieLoop animationData={loadingAnimation} className="size-5" />
+    trailingIcon = null
+    onClick = () => {}
+    disabled = true
+  } else {
+    // stopped, notpresent, or still-checking — needs starting
+    label = "START SERVER"
+    leadingIcon = <PlayIcon />
+    onClick = onStart
+  }
+
+  return (
+    <SidebarMenuButton
+      tooltip={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={PRIMARY_BUTTON_CLASS}
+    >
+      {leadingIcon}
+      <span>{label}</span>
+      {trailingIcon}
+    </SidebarMenuButton>
+  )
+}
+
+function StopRestartButtonGroup({
+  isCrashed,
+  onStop,
+  onRestart,
+}: {
+  isCrashed: boolean
+  onStop: () => void
+  onRestart: () => void
+}) {
+  const leadingIcon = isCrashed ? (
+    <WarningCircleIcon className="size-5!" />
+  ) : (
+    <StopIcon className="size-5!" />
+  )
+  const label = isCrashed ? "SERVER CRASHED — STOP" : "STOP SERVER"
+
+  return (
+    <ButtonGroup className="w-full">
+      <Button
+        type="button"
+        onClick={onStop}
+        className={`${PRIMARY_BUTTON_CLASS} flex-1 justify-start gap-2 rounded-md`}
+      >
+        {leadingIcon}
+        <span className="truncate">{label}</span>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            aria-label="More server actions"
+            className={`${PRIMARY_BUTTON_CLASS} shrink-0 rounded-md px-2`}
+          >
+            <CaretDownIcon className="size-4!" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem onSelect={onRestart}>
+            <ArrowClockwiseIcon className="size-4" />
+            Restart server
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </ButtonGroup>
   )
 }

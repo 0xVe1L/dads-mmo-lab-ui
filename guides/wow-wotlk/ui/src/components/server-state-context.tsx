@@ -97,6 +97,7 @@ export type WorldserverStatus =
   | "notpresent"
   | "stopped"
   | "starting"
+  | "crashed"
   | "running"
 
 export type ServerStatusPayload = {
@@ -104,7 +105,7 @@ export type ServerStatusPayload = {
   installPath: string | null
 }
 
-export type ServerActionKind = "start" | "stop"
+export type ServerActionKind = "start" | "stop" | "restart"
 
 /** State machine for an in-flight start/stop. Mirrors install lifecycle. */
 export type ServerActionStatus = "idle" | "running" | "succeeded" | "failed"
@@ -164,6 +165,7 @@ type ServerState = {
   serverActionPending: InstallLogLine | null
   startServer: () => Promise<void>
   stopServer: () => Promise<void>
+  restartServer: () => Promise<void>
   resetServerAction: () => void
 }
 
@@ -483,7 +485,12 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
 
     const donePromise = listen<ServerDoneEvent>("server:done", (e) => {
       setServerConsoleState(flushOnTerminate)
-      const verb = e.payload.action === "start" ? "Start" : "Stop"
+      const verb =
+        e.payload.action === "start"
+          ? "Start"
+          : e.payload.action === "stop"
+            ? "Stop"
+            : "Restart"
       const msg = e.payload.success
         ? `${verb} succeeded.`
         : `${verb} failed${e.payload.code != null ? ` (code ${e.payload.code})` : ""}${
@@ -492,8 +499,12 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       setServerConsoleState((prev) => applyFinal(prev, "system", msg, nextId))
       // The celebratory ready-line is the language users have seen in
       // every guide and Gaming Mode launcher since v1.0 — they're looking
-      // for it. Only fire it for successful starts, not stops.
-      if (e.payload.success && e.payload.action === "start") {
+      // for it. Fire it on successful start *or* restart (both end with
+      // the server running and ready), not on stop.
+      if (
+        e.payload.success &&
+        (e.payload.action === "start" || e.payload.action === "restart")
+      ) {
         setServerConsoleState((prev) =>
           applyFinal(prev, "highlight", "AZEROTH IS READY! ⚔️", nextId)
         )
@@ -624,6 +635,24 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
     }
   }, [nextId])
 
+  const restartServer = React.useCallback(async () => {
+    if (!isTauri()) {
+      setServerActionStatus("succeeded")
+      return
+    }
+    setServerConsoleState(EMPTY_CONSOLE_STATE)
+    setServerActionKind("restart")
+    setServerActionStatus("running")
+    try {
+      await trackedInvoke("restart_server")
+    } catch (err) {
+      setServerActionStatus("failed")
+      setServerConsoleState((prev) =>
+        applyFinal(prev, "system", `Failed to restart: ${String(err)}`, nextId)
+      )
+    }
+  }, [nextId])
+
   const resetServerAction = React.useCallback(() => {
     setServerActionStatus("idle")
     setServerActionKind(null)
@@ -654,6 +683,7 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       serverActionPending: serverConsoleState.topPending,
       startServer,
       stopServer,
+      restartServer,
       resetServerAction,
     }),
     [
@@ -674,6 +704,7 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       serverConsoleState,
       startServer,
       stopServer,
+      restartServer,
       resetServerAction,
     ]
   )
