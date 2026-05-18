@@ -635,18 +635,25 @@ wait_for_server() {
     READY=0
     WORLD_CONTAINER=""
 
+    # Update the displayed elapsed counter every second so the UI feels
+    # alive, but only re-poll docker logs every 5s (it shells out to a
+    # subprocess + reads the whole worldserver log). The `printf "\r..."`
+    # at the end of the line is what makes our forward_lines reader
+    # treat the line as transient — the UI replaces a single in-place
+    # row each tick instead of appending a new line every interval.
     while [ $ELAPSED -lt $TIMEOUT ]; do
-        WORLD_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i "worldserver" | head -1)
-        if [ -n "$WORLD_CONTAINER" ]; then
-            if docker logs "$WORLD_CONTAINER" 2>/dev/null | grep -q "ready\.\.\."; then
-                READY=1
-                break
+        if [ $((ELAPSED % 5)) -eq 0 ]; then
+            WORLD_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i "worldserver" | head -1)
+            if [ -n "$WORLD_CONTAINER" ]; then
+                if docker logs "$WORLD_CONTAINER" 2>/dev/null | grep -q "ready\.\.\."; then
+                    READY=1
+                    break
+                fi
             fi
         fi
-        # Heartbeat the UI every 10s so the console doesn't look frozen
-        echo "[..]  still initializing (${ELAPSED}s elapsed)"
-        sleep 10
-        ELAPSED=$((ELAPSED + 10))
+        printf "[..]  server initializing (%ds elapsed)\r" "$ELAPSED"
+        sleep 1
+        ELAPSED=$((ELAPSED + 1))
     done
 
     if [ $READY -eq 1 ]; then

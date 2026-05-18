@@ -123,13 +123,13 @@ function PrimaryServerButton({
     onClick = onInstall
   } else if (actionInFlight) {
     label = "WORKING…"
-    leadingIcon = <LottieLoop animationData={loadingAnimation} className="size-5" />
+    leadingIcon = <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
     trailingIcon = null
     onClick = () => {}
     disabled = true
   } else if (worldserverStatus === "starting") {
     label = "STARTING…"
-    leadingIcon = <LottieLoop animationData={loadingAnimation} className="size-5" />
+    leadingIcon = <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
     trailingIcon = null
     onClick = () => {}
     disabled = true

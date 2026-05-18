@@ -202,6 +202,37 @@ type ServerState = {
 
 const ServerStateContext = React.createContext<ServerState | null>(null)
 
+/**
+ * Flatten the nested log structure (lines + sections-with-lines) into a
+ * plain-text string suitable for a `.txt` download. Sections are
+ * annotated with header/footer markers so the user can tell what was
+ * inside a collapsed section in the UI. Used by the "Download log"
+ * button on the install + server-control screens so users can attach
+ * an install transcript to bug reports.
+ */
+export function serializeLog(
+  entries: InstallLogEntry[],
+  pending: InstallLogLine | null
+): string {
+  const out: string[] = []
+  for (const entry of entries) {
+    if (entry.kind === "line") {
+      out.push(entry.data.text)
+      continue
+    }
+    const sec = entry.data
+    const tag = sec.state === "active" ? "ACTIVE" : "DONE"
+    out.push("")
+    out.push(`==== Section: ${sec.title}  [${tag}] ====`)
+    for (const line of sec.lines) out.push(line.text)
+    if (sec.pending) out.push(sec.pending.text)
+    out.push(`==== End: ${sec.title} ====`)
+    out.push("")
+  }
+  if (pending) out.push(pending.text)
+  return out.join("\n")
+}
+
 const EMPTY_CONSOLE_STATE: ConsoleState = { log: [], topPending: null }
 
 // ── Console-state reducers ──────────────────────────────────────────────

@@ -5,6 +5,7 @@ import {
 } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
+import { DownloadLogButton } from "@/components/download-log-button"
 import { InstallConsole } from "@/components/install-console"
 import { LottieLoop } from "@/components/lottie-loop"
 import { useServerState } from "@/components/server-state-context"
@@ -19,6 +20,12 @@ export function ServerControlScreen() {
     serverActionPending,
     resetServerAction,
   } = useServerState()
+  const filenamePrefix =
+    serverActionKind === "stop"
+      ? "server-stop"
+      : serverActionKind === "restart"
+        ? "server-restart"
+        : "server-start"
 
   const verb = serverActionKind === "stop" ? "Stop" : "Start"
   const verbingNoun =
@@ -41,7 +48,16 @@ export function ServerControlScreen() {
             initialise.
           </p>
         </div>
-        <ServerActionBadge status={serverActionStatus} verb={verb} />
+        <div className="flex shrink-0 items-center gap-2">
+          <DownloadLogButton
+            log={serverActionLog}
+            pending={serverActionPending}
+            status={serverActionStatus}
+            exitCode={null}
+            filenamePrefix={filenamePrefix}
+          />
+          <ServerActionBadge status={serverActionStatus} verb={verb} />
+        </div>
       </header>
 
       <InstallConsole
@@ -86,7 +102,7 @@ function ServerActionBadge({
   if (status === "running") {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
-        <LottieLoop animationData={loadingAnimation} className="size-4" />
+        <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
         {verb}ing…
       </span>
     )

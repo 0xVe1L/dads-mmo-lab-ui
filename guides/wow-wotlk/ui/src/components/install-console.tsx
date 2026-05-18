@@ -7,11 +7,13 @@ import {
 } from "@phosphor-icons/react"
 
 import { cn } from "@/lib/utils"
+import { LottieLoop } from "@/components/lottie-loop"
 import type {
   InstallLogEntry,
   InstallLogLine,
   InstallSection,
 } from "@/components/server-state-context"
+import loadingAnimation from "@/assets/lottie/loadingV4.json"
 
 const STICK_THRESHOLD_PX = 24
 
@@ -178,9 +180,12 @@ function ConsoleSection({
           )}
         />
         {isActive ? (
-          <span
-            aria-label="active"
-            className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-500"
+          // `invert` flips the lottie's solid-black strokes to white so it
+          // reads on the zinc-900 section background. Without it the
+          // animation is invisible.
+          <LottieLoop
+            animationData={loadingAnimation}
+            className="size-4 shrink-0 invert"
           />
         ) : (
           <CheckIcon

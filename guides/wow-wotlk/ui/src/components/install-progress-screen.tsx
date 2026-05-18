@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DownloadLogButton } from "@/components/download-log-button"
 import { InstallConsole } from "@/components/install-console"
 import { LottieLoop } from "@/components/lottie-loop"
 import { useServerState } from "@/components/server-state-context"
@@ -75,7 +76,16 @@ export function InstallProgressScreen() {
             This takes a while — leave the window open.
           </p>
         </div>
-        <StatusBadge status={installStatus} exitCode={installExitCode} />
+        <div className="flex shrink-0 items-center gap-2">
+          <DownloadLogButton
+            log={installLog}
+            pending={installPending}
+            status={installStatus}
+            exitCode={installExitCode}
+            filenamePrefix="install"
+          />
+          <StatusBadge status={installStatus} exitCode={installExitCode} />
+        </div>
       </header>
 
       <div className="relative min-h-0">
@@ -169,7 +179,7 @@ function StatusBadge({
   if (status === "running") {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
-        <LottieLoop animationData={loadingAnimation} className="size-4" />
+        <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
         Running
       </span>
     )
@@ -177,7 +187,7 @@ function StatusBadge({
   if (status === "cancelling") {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-        <LottieLoop animationData={loadingAnimation} className="size-4" />
+        <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
         Cancelling…
       </span>
     )
@@ -185,7 +195,7 @@ function StatusBadge({
   if (status === "cleaning") {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-        <LottieLoop animationData={loadingAnimation} className="size-4" />
+        <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
         Cleaning up…
       </span>
     )
