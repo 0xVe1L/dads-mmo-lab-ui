@@ -830,13 +830,18 @@ bootstrap_accounts_and_ahbot() {
             print_error "Couldn't compute next character GUID (got: '$next_guid')"
             return 1
         fi
+        # Name MUST be in AC's normalized form (first-letter capitalized,
+        # rest lowercase) because AC's command parser normalizes target
+        # names before SQL lookup. Mixed-case "AHBotSeller" caused
+        # `.send items` and `.tele name` to report "Character does not
+        # exist" even though the row was present. Use "Ahbotseller".
         sql_exec "INSERT INTO acore_characters.characters \
                   (guid, account, name, race, class, gender, level, taximask, innTriggerId) \
-                  VALUES (${next_guid}, ${ahbot_id}, 'AHBotSeller', 1, 1, 0, 1, \
+                  VALUES (${next_guid}, ${ahbot_id}, 'Ahbotseller', 1, 1, 0, 1, \
                           '0 0 0 0 0 0 0 0 0 0 0 0 0 0 ', 0);" \
             || { print_warning "Couldn't create AH Bot character"; return 1; }
         seller_guid="$next_guid"
-        print_success "Created AH Bot character: AHBotSeller (guid ${seller_guid}) on account ${ahbot_id}"
+        print_success "Created AH Bot character: Ahbotseller (guid ${seller_guid}) on account ${ahbot_id}"
     fi
 
     # ── Rewrite mod_ahbot.conf with the new account_id ────────────

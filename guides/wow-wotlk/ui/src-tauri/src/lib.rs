@@ -4,8 +4,11 @@ use tauri_plugin_log::{Target, TargetKind};
 
 mod app_settings;
 mod install;
+mod inventory;
 mod modules;
 mod server;
+mod soap;
+mod teleport;
 mod wow_client;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -73,7 +76,12 @@ pub fn run() {
             wow_client::get_wow_client_state,
             wow_client::set_wow_directory,
             wow_client::clear_wow_directory,
-            wow_client::fix_realmlist
+            wow_client::fix_realmlist,
+            teleport::list_teleport_locations,
+            teleport::teleport_character_to_location,
+            teleport::teleport_character_to_coords,
+            inventory::search_items,
+            inventory::send_item_to_character
         ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {

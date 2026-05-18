@@ -194,7 +194,7 @@ export type GameCharacter = {
 }
 
 /** UI page-level routing — no router lib, just an enum in context. */
-export type ActivePage = "dashboard" | "modules"
+export type ActivePage = "dashboard" | "modules" | "teleport" | "inventory"
 
 type ServerState = {
   // Detection

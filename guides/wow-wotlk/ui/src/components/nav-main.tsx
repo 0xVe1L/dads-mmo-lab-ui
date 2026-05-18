@@ -19,8 +19,10 @@ import {
   ArrowClockwiseIcon,
   ArrowRightIcon,
   CaretDownIcon,
+  CompassIcon,
   FloppyDiskBackIcon,
   HouseIcon,
+  PackageIcon,
   PlayIcon,
   PuzzlePieceIcon,
   StopIcon,
@@ -122,6 +124,28 @@ export function NavMain({
                   <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
                 </span>
               )}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Teleport"
+              onClick={() => setActivePage("teleport")}
+              isActive={activePage === "teleport"}
+              disabled={!installed}
+            >
+              <CompassIcon />
+              <span>Teleport</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Inventory"
+              onClick={() => setActivePage("inventory")}
+              isActive={activePage === "inventory"}
+              disabled={!installed}
+            >
+              <PackageIcon />
+              <span>Inventory</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
