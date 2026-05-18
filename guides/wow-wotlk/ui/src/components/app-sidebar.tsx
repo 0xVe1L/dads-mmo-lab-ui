@@ -1,9 +1,9 @@
 import * as React from "react"
 
+import { GlobalCharacterCard } from "@/components/global-character-card"
 import { NavDocuments } from "@/components/nav-documents"
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
-import { NavUser } from "@/components/nav-user"
 import { useServerState } from "@/components/server-state-context"
 import {
   Sidebar,
@@ -213,7 +213,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={secondaryItems} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <GlobalCharacterCard />
       </SidebarFooter>
     </Sidebar>
   )

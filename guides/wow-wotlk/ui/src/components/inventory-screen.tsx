@@ -2,6 +2,7 @@ import * as React from "react"
 import {
   ArrowSquareOutIcon,
   GearIcon,
+  GearSixIcon,
   MagnifyingGlassIcon,
   PackageIcon,
   PaperPlaneTiltIcon,
@@ -19,6 +20,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -27,13 +36,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  CharacterPicker,
-  useSelectedCharacter,
-} from "@/components/character-picker"
+import { ItemIconFramed } from "@/components/item-icon-framed"
+import { ItemTooltip } from "@/components/item-tooltip"
 import { useServerState } from "@/components/server-state-context"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
 import { cn } from "@/lib/utils"
+
+type TooltipData = {
+  spells: Record<string, { name: string; description: string; aura_description: string; icon: string }>
+  sets: Record<string, { name: string; items: number[]; bonuses: { threshold: number; spell_id: number }[] }>
+}
 
 const ENRICH_NOTICE_ID = "inventory.enrich-info-well"
 
@@ -78,12 +90,15 @@ type ItemSummary = {
   display_id: number
 }
 
+// Tailwind classes tuned to roughly match Blizzard's canonical quality
+// palette (#1eff00 / #0070ff / #a335ee / #ff8000). Default Tailwind
+// emerald/sky/purple are slightly off; green/blue/violet read closer.
 const QUALITY_COLORS: Record<number, string> = {
   0: "text-zinc-400 dark:text-zinc-500",
   1: "text-foreground",
-  2: "text-emerald-500 dark:text-emerald-400",
-  3: "text-sky-500 dark:text-sky-400",
-  4: "text-purple-500 dark:text-purple-400",
+  2: "text-green-500 dark:text-green-400",
+  3: "text-blue-500 dark:text-blue-400",
+  4: "text-violet-500 dark:text-violet-400",
   5: "text-orange-500 dark:text-orange-400",
   6: "text-amber-300",
   7: "text-cyan-400",
@@ -118,8 +133,10 @@ const ITEM_CLASSES: { value: string; label: string }[] = [
 ]
 
 export function InventoryScreen() {
-  const [characterGuid, setCharacterGuid] = React.useState("")
-  const character = useSelectedCharacter(characterGuid)
+  // The recipient comes from the global character selection in the
+  // sidebar — Inventory is a "act on my character" surface. NPC /
+  // bot-targeted flows keep their own dedicated CharacterPickers.
+  const { selectedCharacter: character } = useServerState()
 
   const [query, setQuery] = React.useState("")
   const [classFilter, setClassFilter] = React.useState("0")
@@ -129,6 +146,14 @@ export function InventoryScreen() {
   const [searchError, setSearchError] = React.useState<string | null>(null)
 
   const [sendingFor, setSendingFor] = React.useState<ItemSummary | null>(null)
+
+  // Page-level preference: include DEPRECATED items (Blizzard's marker
+  // for items that are no longer obtainable). Persists in settings.json
+  // via app_settings::inventory_show_deprecated. `null` while loading
+  // so we don't fire a search with the wrong value on first mount.
+  const [showDeprecated, setShowDeprecated] = React.useState<boolean | null>(
+    null
+  )
 
   // Icon cache lifecycle. `iconMap` is displayid → icon-name (lowercase,
   // no extension). Loaded once from the Rust cache after status flips
@@ -140,6 +165,7 @@ export function InventoryScreen() {
     null
   )
   const [iconMap, setIconMap] = React.useState<Record<string, string>>({})
+  const [tooltipData, setTooltipData] = React.useState<TooltipData | null>(null)
   const [enrichDismissed, setEnrichDismissed] = React.useState<boolean | null>(
     null
   )
@@ -168,6 +194,23 @@ export function InventoryScreen() {
     }
   }, [])
 
+  // Tooltip enrichment is independent of icons — extracted separately
+  // from Settings. Load lazily once status reports ready; if it
+  // doesn't exist we just skip the spell-description / set-bonus
+  // lines in the tooltip and show everything else fine.
+  const loadTooltipData = React.useCallback(async () => {
+    if (!isTauri()) return
+    try {
+      const cache = await trackedInvoke<{ spells: TooltipData["spells"]; sets: TooltipData["sets"] }>(
+        "load_tooltip_data"
+      )
+      setTooltipData({ spells: cache.spells, sets: cache.sets })
+    } catch (e) {
+      console.warn("load_tooltip_data failed", e)
+      setTooltipData(null)
+    }
+  }, [])
+
   React.useEffect(() => {
     void refreshIconStatus()
     if (isTauri()) {
@@ -176,10 +219,23 @@ export function InventoryScreen() {
       })
         .then((d) => setEnrichDismissed(d))
         .catch(() => setEnrichDismissed(false))
+      void trackedInvoke<boolean>("get_inventory_show_deprecated")
+        .then((v) => setShowDeprecated(v))
+        .catch(() => setShowDeprecated(false))
     } else {
       setEnrichDismissed(false)
+      setShowDeprecated(false)
     }
   }, [refreshIconStatus])
+
+  const toggleShowDeprecated = (next: boolean) => {
+    setShowDeprecated(next)
+    if (isTauri()) {
+      void trackedInvoke("set_inventory_show_deprecated", { value: next }).catch(
+        (e) => console.warn("set_inventory_show_deprecated failed", e)
+      )
+    }
+  }
 
   // Auto-load map once the status reports ready (covers the first-load
   // case where the cache already existed from a previous session).
@@ -189,16 +245,27 @@ export function InventoryScreen() {
     }
   }, [iconStatus, iconMap, loadIconMap])
 
+  // Tooltip cache loads on mount when present; we don't gate on a
+  // status check because the cache file is cheap to probe (a failed
+  // load just sets tooltipData=null and tooltips skip enrichment).
+  React.useEffect(() => {
+    void loadTooltipData()
+  }, [loadTooltipData])
+
   // Debounced search — the dataset is large (~40k items in vanilla AC)
   // so wait 300ms after the last keystroke before hitting the DB.
+  // showDeprecated participates so toggling the cog's checkbox re-runs
+  // the query; gated on `!= null` so we don't fire before the
+  // persisted preference has loaded.
   React.useEffect(() => {
     if (!isTauri()) return
+    if (showDeprecated == null) return
     const handle = setTimeout(() => {
       void runSearch()
     }, 300)
     return () => clearTimeout(handle)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, classFilter, qualityMin])
+  }, [query, classFilter, qualityMin, showDeprecated])
 
   const runSearch = async () => {
     setSearching(true)
@@ -216,6 +283,7 @@ export function InventoryScreen() {
           class: cls,
           qualityMin: parseInt(qualityMin, 10),
           limit: 100,
+          hideDeprecated: !showDeprecated,
         },
       })
       // Filter further if user picked consumable synthetic class — keep
@@ -236,65 +304,57 @@ export function InventoryScreen() {
   return (
     <div className="grid h-[calc(100svh-var(--header-height))] grid-rows-[auto_minmax(0,1fr)] gap-4 p-6">
       <header className="space-y-3">
-        <div className="space-y-1">
-          <h1 className="font-heading text-2xl font-semibold leading-tight">
-            Inventory
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Search the entire item database and deliver anything you find
-            to a character via in-game mail. Works whether the recipient
-            is online or not.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <h1 className="font-heading text-2xl font-semibold leading-tight">
+              Inventory
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Search the entire item database and deliver anything you
+              find to your character via in-game mail. Works whether
+              the recipient is online or not.
+            </p>
+          </div>
+          <InventoryOptionsMenu
+            showDeprecated={showDeprecated ?? false}
+            onToggleShowDeprecated={toggleShowDeprecated}
+          />
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
-          <CharacterPicker
-            value={characterGuid}
-            onChange={setCharacterGuid}
-            placeholder="Pick the recipient character…"
-            excludeAhbot
-          />
-
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Search
-            </span>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr]">
-              <div className="relative">
-                <MagnifyingGlassIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Item name…"
-                  className="pl-9"
-                />
-              </div>
-              <Select value={classFilter} onValueChange={setClassFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ITEM_CLASSES.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={qualityMin} onValueChange={setQualityMin}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0, 1, 2, 3, 4, 5].map((q) => (
-                    <SelectItem key={q} value={String(q)}>
-                      {q === 0 ? "Any quality" : `${QUALITY_LABELS[q]}+`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr]">
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Item name…"
+              className="pl-9"
+            />
           </div>
+          <Select value={classFilter} onValueChange={setClassFilter}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ITEM_CLASSES.map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={qualityMin} onValueChange={setQualityMin}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[0, 1, 2, 3, 4, 5].map((q) => (
+                <SelectItem key={q} value={String(q)}>
+                  <QualityOption q={q} />
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </header>
 
@@ -315,6 +375,7 @@ export function InventoryScreen() {
                 key={item.entry}
                 item={item}
                 iconMap={iconMap}
+                tooltipData={tooltipData}
                 onSend={() => setSendingFor(item)}
                 canSend={character != null}
               />
@@ -340,23 +401,55 @@ export function InventoryScreen() {
 function ItemTile({
   item,
   iconMap,
+  tooltipData,
   onSend,
   canSend,
 }: {
   item: ItemSummary
   iconMap: Record<string, string>
+  tooltipData: TooltipData | null
   onSend: () => void
   canSend: boolean
 }) {
   const quality = QUALITY_COLORS[item.quality] ?? "text-foreground"
+  const iconName = iconMap[String(item.display_id)]
   return (
     <div className="group flex items-center gap-3 rounded-md border border-border bg-card p-3 transition-colors hover:border-primary/40">
-      <ItemIcon item={item} iconMap={iconMap} />
+      {/* Wrap the framed icon in ItemTooltip — hover anywhere on the
+          icon to see the full WoW-style tooltip. The name + meta block
+          to the right stays plain so we don't catch hover on the
+          whole row (less jumpy when scanning the grid). */}
+      <ItemTooltip
+        entry={item.entry}
+        iconMap={iconMap}
+        tooltipData={tooltipData}
+        side="right"
+      >
+        <span className="shrink-0 cursor-help">
+          <ItemIconFramed
+            iconName={iconName}
+            entry={item.entry}
+            quality={item.quality}
+            size="medium"
+            alt={item.name}
+          />
+        </span>
+      </ItemTooltip>
       <div className="min-w-0 flex-1">
-        <div className={cn("truncate text-sm font-medium leading-tight", quality)}>
+        <div
+          // line-clamp-2 lets long names wrap to a second line instead
+          // of truncating to identical "Arcanum of Bl…" / "Arcanum of
+          // Bu…" rows. font-semibold + the brighter quality palette
+          // above keep the name legible against the card background.
+          className={cn(
+            "line-clamp-2 break-words text-sm font-semibold leading-tight",
+            quality
+          )}
+          title={item.name}
+        >
           {item.name}
         </div>
-        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+        <div className="mt-1 truncate text-[10px] text-muted-foreground">
           ilvl {item.item_level}
           {item.required_level > 0 && ` · req lvl ${item.required_level}`}
           {" · "}
@@ -381,53 +474,6 @@ function ItemTile({
       >
         Send
       </Button>
-    </div>
-  )
-}
-
-/**
- * Square 36x36 icon tile. When the client-DBC icon cache is populated
- * (enrichment is triggered from the Settings page), we look up the
- * icon name by displayid and render Wowhead's CDN image. Without the
- * cache, falls back to a quality-colored entry-id chit so the grid is
- * still scannable.
- */
-function ItemIcon({
-  item,
-  iconMap,
-}: {
-  item: ItemSummary
-  iconMap: Record<string, string>
-}) {
-  const quality = QUALITY_COLORS[item.quality] ?? "text-foreground"
-  const iconName = iconMap[String(item.display_id)]
-  const [imgError, setImgError] = React.useState(false)
-
-  if (iconName && !imgError) {
-    // Wowhead's icon CDN is publicly served — same images you see on
-    // wowhead.com without scraping their HTML. `medium/` is 36x36 and
-    // matches our tile size; `large/` is 56x56 if we want to bump it.
-    const url = `https://wow.zamimg.com/images/wow/icons/medium/${iconName}.jpg`
-    return (
-      <img
-        src={url}
-        alt={item.name}
-        loading="lazy"
-        onError={() => setImgError(true)}
-        className="size-9 shrink-0 rounded border border-border bg-muted/40 object-cover"
-      />
-    )
-  }
-
-  return (
-    <div
-      className={cn(
-        "flex size-9 shrink-0 items-center justify-center rounded border border-border bg-muted/40 font-mono text-[10px]",
-        quality
-      )}
-      title={`displayid ${item.display_id}`}
-    >
-      #{item.entry}
     </div>
   )
 }
@@ -609,6 +655,67 @@ function ErrorPanel({
         Retry
       </Button>
     </div>
+  )
+}
+
+/**
+ * Quality dropdown item. Renders "≥ Common" / "≥ Uncommon" / etc.
+ * with the rarity name colored to match the WoW palette (the ≥ glyph
+ * itself stays in the default text color so the row visually anchors
+ * on the comparator). The "Any quality" zero option skips both the
+ * glyph and the color since it's a non-filter.
+ */
+function QualityOption({ q }: { q: number }) {
+  if (q === 0) return <span>Any quality</span>
+  const color = QUALITY_COLORS[q] ?? "text-foreground"
+  return (
+    <span className="flex items-center gap-1">
+      <span className="text-muted-foreground">≥</span>
+      <span className={cn("font-medium", color)}>{QUALITY_LABELS[q]}</span>
+    </span>
+  )
+}
+
+/**
+ * Page-level options menu, surfaced as a settings-cog button next to
+ * the page title. v1 has one toggle (Show Deprecated) but the menu
+ * structure is in place so we can add more without re-thinking
+ * placement later.
+ */
+function InventoryOptionsMenu({
+  showDeprecated,
+  onToggleShowDeprecated,
+}: {
+  showDeprecated: boolean
+  onToggleShowDeprecated: (next: boolean) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          aria-label="Inventory options"
+        >
+          <GearSixIcon className="size-4" />
+          Options
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>Search filters</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuCheckboxItem
+          checked={showDeprecated}
+          onCheckedChange={(v) => onToggleShowDeprecated(Boolean(v))}
+          // Stop the Radix-default close-on-select so the user can
+          // toggle multiple options without re-opening the menu.
+          onSelect={(e) => e.preventDefault()}
+        >
+          Show deprecated items
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

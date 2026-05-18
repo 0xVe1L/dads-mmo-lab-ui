@@ -92,6 +92,7 @@ pub fn run() {
             teleport::teleport_character_to_location,
             teleport::teleport_character_to_coords,
             inventory::search_items,
+            inventory::get_item_details,
             inventory::send_item_to_character,
             client_assets::get_icon_cache_status,
             client_assets::extract_item_icons,
@@ -103,7 +104,11 @@ pub fn run() {
             client_assets::wipe_tooltip_cache,
             app_settings::is_notice_dismissed,
             app_settings::dismiss_notice,
-            app_settings::undismiss_notice
+            app_settings::undismiss_notice,
+            app_settings::get_inventory_show_deprecated,
+            app_settings::set_inventory_show_deprecated,
+            app_settings::get_selected_character_guid,
+            app_settings::set_selected_character_guid
         ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {

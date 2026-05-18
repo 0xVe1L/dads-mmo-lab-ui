@@ -74,7 +74,15 @@ const ITEM_SET_PATH: &str = "DBFilesClient\\ItemSet.dbc";
 /// present (some clients ship without certain patches). Returns an
 /// error if NO base MPQs are present, since that means the user
 /// pointed us at the wrong directory.
-fn open_patch_chain(wow_dir: &Path) -> Result<PatchChain, String> {
+///
+/// If `window` + `kind` are supplied we emit a progress event before
+/// opening each archive, so the UI can show "Opening lichking.MPQ
+/// (4/14)…" instead of a single static "Opening MPQ patch chain…"
+/// spinner that sits for 90% of the extraction's wall-clock.
+fn open_patch_chain(
+    wow_dir: &Path,
+    window: Option<(&tauri::Window, &str)>,
+) -> Result<PatchChain, String> {
     let data_dir = wow_dir.join("Data");
     if !data_dir.is_dir() {
         return Err(format!(
@@ -83,38 +91,49 @@ fn open_patch_chain(wow_dir: &Path) -> Result<PatchChain, String> {
         ));
     }
 
-    let mut chain = PatchChain::new();
-    let mut priority = 0i32;
-    let mut added = 0;
-    for name in BASE_MPQS {
-        let path = data_dir.join(name);
-        if !path.exists() {
-            continue;
-        }
-        chain
-            .add_archive(&path, priority)
-            .map_err(|e| format!("open {}: {}", path.display(), e))?;
-        priority += 1;
-        added += 1;
-    }
-    // Locale MPQs go LAST (highest priority) so their localized DBC
-    // text shadows the empty base rows.
+    // Pre-scan so we know the total count for "n/N" progress strings.
+    // Cheap — just exists() calls.
+    let base_paths: Vec<PathBuf> = BASE_MPQS
+        .iter()
+        .map(|n| data_dir.join(n))
+        .filter(|p| p.exists())
+        .collect();
     let locale_root = data_dir.join(LOCALE_DIR);
-    for name in LOCALE_MPQS {
-        let path = locale_root.join(name);
-        if !path.exists() {
-            continue;
-        }
-        chain
-            .add_archive(&path, priority)
-            .map_err(|e| format!("open {}: {}", path.display(), e))?;
-        priority += 1;
-    }
-    if added == 0 {
+    let locale_paths: Vec<PathBuf> = LOCALE_MPQS
+        .iter()
+        .map(|n| locale_root.join(n))
+        .filter(|p| p.exists())
+        .collect();
+    let total = base_paths.len() + locale_paths.len();
+    if base_paths.is_empty() {
         return Err(format!(
             "No MPQ archives found in {}. Make sure this is your WoW install root (one level above Data/).",
             data_dir.display()
         ));
+    }
+
+    let mut chain = PatchChain::new();
+    let mut priority = 0i32;
+    let mut opened = 0;
+    for path in base_paths.iter().chain(locale_paths.iter()) {
+        opened += 1;
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?")
+            .to_string();
+        if let Some((win, kind)) = window {
+            emit_progress(
+                win,
+                kind,
+                "Opening MPQ patch chain…",
+                Some(format!("{} ({}/{})", file_name, opened, total)),
+            );
+        }
+        chain
+            .add_archive(path, priority)
+            .map_err(|e| format!("open {}: {}", path.display(), e))?;
+        priority += 1;
     }
     Ok(chain)
 }
@@ -278,8 +297,9 @@ pub async fn extract_item_icons(window: tauri::Window) -> Result<ExtractResult, 
 }
 
 fn extract_item_icons_blocking(window: tauri::Window, client_dir: String) -> Result<ExtractResult, String> {
-    emit_progress(&window, "icons", "Opening MPQ patch chain…", None);
-    let mut chain = open_patch_chain(Path::new(&client_dir))?;
+    // open_patch_chain emits per-archive progress itself when given a
+    // window — no need for our own pre-open emit.
+    let mut chain = open_patch_chain(Path::new(&client_dir), Some((&window, "icons")))?;
 
     emit_progress(&window, "icons", "Reading ItemDisplayInfo.dbc…", None);
     let bytes = chain
@@ -555,8 +575,7 @@ fn extract_spells_and_sets(
     window: &tauri::Window,
     wow_dir: &Path,
 ) -> Result<(BTreeMap<String, SpellEntry>, BTreeMap<String, ItemSetEntry>), String> {
-    emit_progress(window, "tooltips", "Opening MPQ patch chain…", None);
-    let mut chain = open_patch_chain(wow_dir)?;
+    let mut chain = open_patch_chain(wow_dir, Some((window, "tooltips")))?;
 
     // ── SpellIcon.dbc: build id → texture-filename map first so we
     //    can resolve each Spell's icon as we walk Spell.dbc.

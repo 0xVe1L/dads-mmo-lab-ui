@@ -25,6 +25,19 @@ pub struct AppSettings {
     /// set so the JSON shape stays diff-friendly; lookups are O(n)
     /// against a tiny list which is fine.
     pub dismissed_notices: Vec<String>,
+    /// Inventory page: include items whose names contain "DEPRECATED"
+    /// (Blizzard's marker for items that are no longer obtainable,
+    /// usually the old version of an item that got reworked). Off by
+    /// default since most searches want the live/current item only.
+    pub inventory_show_deprecated: bool,
+    /// GUID of the user's active "main" character, surfaced via the
+    /// sidebar's GlobalCharacterCard and consumed by any page that
+    /// acts on "the player's character" (Inventory send, Teleport,
+    /// etc.). Stored as the i64 GUID rather than the row index so a
+    /// chardb wipe doesn't silently rebind to whatever new char took
+    /// that slot. None when nothing's selected. Frontend silently
+    /// clears the selection if the GUID no longer exists.
+    pub selected_character_guid: Option<u64>,
 }
 
 fn settings_path() -> Option<PathBuf> {
@@ -91,4 +104,41 @@ pub fn undismiss_notice(notice_id: String) -> Result<(), String> {
         save(&s)?;
     }
     Ok(())
+}
+
+// ── Inventory preferences ───────────────────────────────────────────
+// Persisted alongside the rest of AppSettings rather than in a separate
+// per-page preferences file — Inventory only has the one toggle today;
+// when there are several we can group into a struct.
+
+#[tauri::command]
+pub fn get_inventory_show_deprecated() -> bool {
+    load().inventory_show_deprecated
+}
+
+#[tauri::command]
+pub fn set_inventory_show_deprecated(value: bool) -> Result<(), String> {
+    let mut s = load();
+    if s.inventory_show_deprecated == value {
+        return Ok(());
+    }
+    s.inventory_show_deprecated = value;
+    save(&s)
+}
+
+// ── Selected (main) character ───────────────────────────────────────
+
+#[tauri::command]
+pub fn get_selected_character_guid() -> Option<u64> {
+    load().selected_character_guid
+}
+
+#[tauri::command]
+pub fn set_selected_character_guid(guid: Option<u64>) -> Result<(), String> {
+    let mut s = load();
+    if s.selected_character_guid == guid {
+        return Ok(());
+    }
+    s.selected_character_guid = guid;
+    save(&s)
 }

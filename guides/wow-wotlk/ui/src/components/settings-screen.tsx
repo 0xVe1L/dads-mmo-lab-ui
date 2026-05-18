@@ -328,8 +328,18 @@ export function SettingsScreen() {
               description="Runs every enrichment above end-to-end. Sit back, grab a coffee. Subsequent re-extracts can re-run individual items above."
               status="Chains the items above"
               busy={busy === "all"}
+              // Show progress for whichever extractor is currently
+              // running inside the chain (icons first, then tooltips).
+              progress={
+                busy === "all" ? progress.tooltips ?? progress.icons : undefined
+              }
               disabled={noClient || busy !== null}
-              actionLabel="Import everything"
+              actionLabel={
+                iconStatus?.status === "ready" &&
+                tooltipStatus?.status === "ready"
+                  ? "Re-import everything"
+                  : "Import everything"
+              }
               onAction={runImportAll}
               primary
             />

@@ -94,7 +94,11 @@ export function CharacterPicker({
   // doesn't know the account id).
   const filtered = React.useMemo(() => {
     if (!excludeAhbot) return characters
-    return characters.filter((c) => c.name !== "AHBotSeller")
+    // Case-insensitive — fresh installs are "Ahbotseller" (normalized),
+    // older installs are "AHBotSeller" (pre-fix).
+    return characters.filter(
+      (c) => c.name.toLowerCase() !== "ahbotseller"
+    )
   }, [characters, excludeAhbot])
 
   return (

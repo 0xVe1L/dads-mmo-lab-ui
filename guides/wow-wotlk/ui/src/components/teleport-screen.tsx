@@ -11,10 +11,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  CharacterPicker,
-  useSelectedCharacter,
-} from "@/components/character-picker"
+import { useServerState } from "@/components/server-state-context"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
 import { cn } from "@/lib/utils"
 
@@ -56,8 +53,10 @@ const CONTINENTS: { id: string; label: string; mapIds: number[] | "other" }[] = 
 const FAVORITES_KEY = "dml.teleport.favorites.v1"
 
 export function TeleportScreen() {
-  const [characterGuid, setCharacterGuid] = React.useState("")
-  const character = useSelectedCharacter(characterGuid)
+  // Reads the user's globally-selected character. Teleport doesn't
+  // need its own picker — pages that target a non-user character
+  // (NPCs, AH Bot) still own their dedicated CharacterPicker.
+  const { selectedCharacter: character } = useServerState()
 
   const [locations, setLocations] = React.useState<TeleportLocation[]>([])
   const [loading, setLoading] = React.useState(false)
@@ -221,15 +220,7 @@ export function TeleportScreen() {
           </Button>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <CharacterPicker
-            value={characterGuid}
-            onChange={setCharacterGuid}
-            excludeAhbot
-            placeholder="Select the character to teleport…"
-          />
-          <CustomCoordsForm onTeleport={teleToCoords} busy={busy} />
-        </div>
+        <CustomCoordsForm onTeleport={teleToCoords} busy={busy} />
       </header>
 
       <div className="min-h-0 space-y-3 overflow-hidden">

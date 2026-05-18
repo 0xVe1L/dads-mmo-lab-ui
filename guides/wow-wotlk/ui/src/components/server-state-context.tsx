@@ -252,6 +252,14 @@ type ServerState = {
   refreshCharacters: () => Promise<void>
   /** Apply AH Bot character config + restart worldserver. */
   configureAhbotCharacter: (account: number, guid: number) => Promise<void>
+
+  // Globally-selected "main" character. Surfaced via the sidebar's
+  // GlobalCharacterCard and consumed by Inventory/Teleport (and any
+  // future page that acts on "the user's character"). Persisted by
+  // GUID in settings.json so the choice survives restarts.
+  selectedCharacterGuid: number | null
+  selectedCharacter: GameCharacter | null
+  setSelectedCharacterGuid: (guid: number | null) => Promise<void>
 }
 
 const ServerStateContext = React.createContext<ServerState | null>(null)
@@ -467,6 +475,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
     InstalledModule[]
   >([])
   const [characters, setCharacters] = React.useState<GameCharacter[]>([])
+  const [selectedCharacterGuid, setSelectedCharacterGuidState] = React.useState<
+    number | null
+  >(null)
 
   // ── Server-control state ──────────────────────────────────────────────
   const [worldserverStatus, setWorldserverStatus] = React.useState<
@@ -564,6 +575,43 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       throw err
     }
   }, [])
+
+  // Selected-character lifecycle. Load the persisted GUID once on
+  // mount; setter pushes both into React state AND back to settings.json
+  // so the choice survives restarts. We DON'T validate the GUID against
+  // `characters` here — the selectedCharacter selector below resolves
+  // it lazily, which gracefully handles "characters list still loading"
+  // and "stored GUID is from a chardb that's since been wiped".
+  React.useEffect(() => {
+    if (!isTauri()) return
+    void trackedInvoke<number | null>("get_selected_character_guid")
+      .then((g) => setSelectedCharacterGuidState(g ?? null))
+      .catch((e) => console.warn("get_selected_character_guid failed", e))
+  }, [])
+
+  const setSelectedCharacterGuid = React.useCallback(
+    async (guid: number | null) => {
+      setSelectedCharacterGuidState(guid)
+      if (!isTauri()) return
+      try {
+        await trackedInvoke("set_selected_character_guid", { guid })
+      } catch (e) {
+        console.warn("set_selected_character_guid failed", e)
+      }
+    },
+    []
+  )
+
+  // Resolved character object. Returns null if (a) nothing's selected,
+  // (b) the list hasn't loaded yet, or (c) the GUID refers to a
+  // character that no longer exists. Consumers should treat "null" as
+  // "no character to act on".
+  const selectedCharacter = React.useMemo(() => {
+    if (selectedCharacterGuid == null) return null
+    return (
+      characters.find((c) => c.guid === selectedCharacterGuid) ?? null
+    )
+  }, [selectedCharacterGuid, characters])
 
   // Derive whether AH Bot is installed but unconfigured. AH Bot's conf
   // ships with Account=0 / GUID=0 / EnableSeller=0 from
@@ -894,6 +942,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       characters,
       refreshCharacters,
       configureAhbotCharacter,
+      selectedCharacterGuid,
+      selectedCharacter,
+      setSelectedCharacterGuid,
     }),
     [
       installs,
@@ -922,6 +973,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       characters,
       refreshCharacters,
       configureAhbotCharacter,
+      selectedCharacterGuid,
+      selectedCharacter,
+      setSelectedCharacterGuid,
     ]
   )
 
