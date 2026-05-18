@@ -52,18 +52,13 @@ import { cn } from "@/lib/utils"
  *  - Action commands trigger an immediate refresh so the bars update
  */
 
-type TooltipData = {
-  spells: Record<
-    string,
-    { name: string; description: string; aura_description: string; icon: string }
-  >
-  sets: Record<
-    string,
-    { name: string; items: number[]; bonuses: { threshold: number; spell_id: number }[] }
-  >
+type EquippedItem = {
+  slot: number
+  entry: number
+  displayId: number
+  quality: number
+  count: number
 }
-
-type EquippedItem = { slot: number; entry: number; count: number }
 
 type CharacterPaperdoll = {
   guid: number
@@ -100,28 +95,14 @@ const RIGHT_SLOTS = [9, 5, 6, 7, 10, 11, 12, 13] // Hands, Waist, Legs, Feet, Ri
 const BOTTOM_SLOTS = [15, 16, 17] // MainHand, OffHand, Ranged
 
 export function DashboardPlayerView() {
-  const { selectedCharacter } = useServerState()
+  // iconMap from context — loaded ONCE at app start, shared with
+  // Inventory and any future item-rendering surface. No per-mount
+  // IPC + 10MB JSON parse for the Paperdoll slots. tooltipData lives
+  // in context too but consumed transparently by ItemTooltip.
+  const { selectedCharacter, iconMap } = useServerState()
   const [data, setData] = React.useState<CharacterPaperdoll | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-
-  // Icon + tooltip cache for the paperdoll's item slots. These come
-  // from the Settings enrichment; both load silently on mount and
-  // degrade gracefully (icons fall back to a quality-colored chit,
-  // tooltips skip the spell/set lines) if the user hasn't extracted.
-  const [iconMap, setIconMap] = React.useState<Record<string, string>>({})
-  const [tooltipData, setTooltipData] = React.useState<TooltipData | null>(null)
-  React.useEffect(() => {
-    if (!isTauri()) return
-    void trackedInvoke<Record<string, string>>("load_item_icon_map")
-      .then(setIconMap)
-      .catch(() => setIconMap({}))
-    void trackedInvoke<{ spells: TooltipData["spells"]; sets: TooltipData["sets"] }>(
-      "load_tooltip_data"
-    )
-      .then((c) => setTooltipData({ spells: c.spells, sets: c.sets }))
-      .catch(() => setTooltipData(null))
-  }, [])
 
   const guid = selectedCharacter?.guid ?? null
 
@@ -173,11 +154,7 @@ export function DashboardPlayerView() {
         error={error}
         onRefresh={refresh}
       />
-      <Paperdoll
-        data={data}
-        iconMap={iconMap}
-        tooltipData={tooltipData}
-      />
+      <Paperdoll data={data} iconMap={iconMap} />
     </div>
   )
 }
@@ -327,8 +304,9 @@ function HpBar({
   data: CharacterPaperdoll
   onChanged: () => void
 }) {
-  const pct = data.maxHealth > 0
-    ? Math.min(100, Math.round((data.health / data.maxHealth) * 100))
+  const effMax = effectiveMax(data.maxHealth, data.health)
+  const pct = effMax > 0
+    ? Math.min(100, Math.round((data.health / effMax) * 100))
     : 0
   return (
     <Popover>
@@ -342,7 +320,7 @@ function HpBar({
             icon={<HeartIcon className="size-3.5" weight="fill" />}
             label="Health"
             current={data.health}
-            max={data.maxHealth}
+            max={effMax}
             colorClass="text-rose-400"
           />
           <Bar
@@ -388,7 +366,10 @@ function ResourceBar({
       default: return 0
     }
   })()
-  const pct = max > 0 ? Math.min(100, Math.round((current / max) * 100)) : 0
+  const effMax = effectiveMax(max, current)
+  const pct = effMax > 0
+    ? Math.min(100, Math.round((current / effMax) * 100))
+    : 0
   const colors = POWER_BAR_COLORS[powerKind]
 
   return (
@@ -403,7 +384,7 @@ function ResourceBar({
             icon={<LightningIcon className="size-3.5" weight="fill" />}
             label={POWER_LABELS[powerKind]}
             current={current}
-            max={max}
+            max={effMax}
             colorClass={colors.label}
           />
           <Bar pct={pct} fillClass={colors.fill} />
@@ -475,6 +456,18 @@ function BarLabel({
       </span>
     </div>
   )
+}
+
+/**
+ * Returns the max we should use for percentage display. For a fresh
+ * character that hasn't saved yet, character_stats is unpopulated
+ * (rawMax = 0); fall back to `current` so the bar reads as 100% (the
+ * accurate value — they haven't done anything to drop yet) instead
+ * of 0%. The Refresh button on the header is the user's escape hatch
+ * if the displayed value drifts.
+ */
+function effectiveMax(rawMax: number, current: number): number {
+  return rawMax > 0 ? rawMax : current
 }
 
 function Bar({ pct, fillClass }: { pct: number; fillClass: string }) {
@@ -718,11 +711,9 @@ function ErrorRow({ message }: { message: string }) {
 function Paperdoll({
   data,
   iconMap,
-  tooltipData,
 }: {
   data: CharacterPaperdoll | null
   iconMap: Record<string, string>
-  tooltipData: TooltipData | null
 }) {
   const bySlot = React.useMemo(() => {
     const map: Record<number, EquippedItem> = {}
@@ -743,7 +734,6 @@ function Paperdoll({
               slot={slot}
               item={bySlot[slot]}
               iconMap={iconMap}
-              tooltipData={tooltipData}
             />
           ))}
         </div>
@@ -773,7 +763,6 @@ function Paperdoll({
               slot={slot}
               item={bySlot[slot]}
               iconMap={iconMap}
-              tooltipData={tooltipData}
             />
           ))}
         </div>
@@ -787,7 +776,6 @@ function Paperdoll({
               slot={slot}
               item={bySlot[slot]}
               iconMap={iconMap}
-              tooltipData={tooltipData}
             />
           ))}
         </div>
@@ -800,12 +788,10 @@ function PaperdollSlot({
   slot,
   item,
   iconMap,
-  tooltipData,
 }: {
   slot: number
   item: EquippedItem | undefined
   iconMap: Record<string, string>
-  tooltipData: TooltipData | null
 }) {
   const slotLabel = EQUIP_SLOT_LABELS[slot] ?? `Slot ${slot}`
 
@@ -823,17 +809,18 @@ function PaperdollSlot({
     )
   }
 
-  const iconName = iconMap[String(item.entry)]
+  // iconMap is keyed by displayid (per the ItemDisplayInfo.dbc
+  // extraction in client_assets.rs::extract_item_icons); looking it
+  // up by `entry` like the old code did either missed entirely or
+  // hit a wrong icon by coincidence.
+  const iconName = iconMap[String(item.displayId)]
   return (
-    <ItemTooltip
-      entry={item.entry}
-      tooltipData={tooltipData}
-      side="right"
-    >
+    <ItemTooltip entry={item.entry} side="right">
       <span className="cursor-help">
         <ItemIconFramed
           iconName={iconName}
           entry={item.entry}
+          quality={item.quality}
           size="large"
           alt={slotLabel}
         />

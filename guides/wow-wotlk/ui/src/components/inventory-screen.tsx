@@ -38,14 +38,12 @@ import {
 } from "@/components/ui/select"
 import { ItemIconFramed } from "@/components/item-icon-framed"
 import { ItemTooltip } from "@/components/item-tooltip"
-import { useServerState } from "@/components/server-state-context"
+import {
+  useServerState,
+  type GameCharacter,
+} from "@/components/server-state-context"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
 import { cn } from "@/lib/utils"
-
-type TooltipData = {
-  spells: Record<string, { name: string; description: string; aura_description: string; icon: string }>
-  sets: Record<string, { name: string; items: number[]; bonuses: { threshold: number; spell_id: number }[] }>
-}
 
 const ENRICH_NOTICE_ID = "inventory.enrich-info-well"
 
@@ -136,7 +134,9 @@ export function InventoryScreen() {
   // The recipient comes from the global character selection in the
   // sidebar — Inventory is a "act on my character" surface. NPC /
   // bot-targeted flows keep their own dedicated CharacterPickers.
-  const { selectedCharacter: character } = useServerState()
+  // iconMap is read from context (loaded once at app start) so
+  // navigating away + back doesn't reload the ~1MB icon JSON.
+  const { selectedCharacter: character, iconMap } = useServerState()
 
   const [query, setQuery] = React.useState("")
   const [classFilter, setClassFilter] = React.useState("0")
@@ -155,17 +155,12 @@ export function InventoryScreen() {
     null
   )
 
-  // Icon cache lifecycle. `iconMap` is displayid → icon-name (lowercase,
-  // no extension). Loaded once from the Rust cache after status flips
-  // to "ready" — kept in memory and consulted by every ItemIcon render.
-  // The enrichment ACTIONS now live on the Settings page; this screen
-  // only renders the resulting icons + shows a small dismissable well
-  // pointing the user there if they haven't extracted yet.
+  // The icon-cache STATUS check is still local — it drives the
+  // EnrichInfoWell at the top of the grid ("Want real icons? →
+  // Settings"). Cache DATA itself comes from context above.
   const [iconStatus, setIconStatus] = React.useState<IconCacheStatus | null>(
     null
   )
-  const [iconMap, setIconMap] = React.useState<Record<string, string>>({})
-  const [tooltipData, setTooltipData] = React.useState<TooltipData | null>(null)
   const [enrichDismissed, setEnrichDismissed] = React.useState<boolean | null>(
     null
   )
@@ -177,37 +172,6 @@ export function InventoryScreen() {
       setIconStatus(s)
     } catch (e) {
       console.warn("get_icon_cache_status failed", e)
-    }
-  }, [])
-
-  const loadIconMap = React.useCallback(async () => {
-    if (!isTauri()) return
-    try {
-      const m = await trackedInvoke<Record<string, string>>(
-        "load_item_icon_map"
-      )
-      setIconMap(m)
-    } catch (e) {
-      // Cache may have just been wiped — non-fatal, fall back to text tiles.
-      console.warn("load_item_icon_map failed", e)
-      setIconMap({})
-    }
-  }, [])
-
-  // Tooltip enrichment is independent of icons — extracted separately
-  // from Settings. Load lazily once status reports ready; if it
-  // doesn't exist we just skip the spell-description / set-bonus
-  // lines in the tooltip and show everything else fine.
-  const loadTooltipData = React.useCallback(async () => {
-    if (!isTauri()) return
-    try {
-      const cache = await trackedInvoke<{ spells: TooltipData["spells"]; sets: TooltipData["sets"] }>(
-        "load_tooltip_data"
-      )
-      setTooltipData({ spells: cache.spells, sets: cache.sets })
-    } catch (e) {
-      console.warn("load_tooltip_data failed", e)
-      setTooltipData(null)
     }
   }, [])
 
@@ -236,21 +200,6 @@ export function InventoryScreen() {
       )
     }
   }
-
-  // Auto-load map once the status reports ready (covers the first-load
-  // case where the cache already existed from a previous session).
-  React.useEffect(() => {
-    if (iconStatus?.status === "ready" && Object.keys(iconMap).length === 0) {
-      void loadIconMap()
-    }
-  }, [iconStatus, iconMap, loadIconMap])
-
-  // Tooltip cache loads on mount when present; we don't gate on a
-  // status check because the cache file is cheap to probe (a failed
-  // load just sets tooltipData=null and tooltips skip enrichment).
-  React.useEffect(() => {
-    void loadTooltipData()
-  }, [loadTooltipData])
 
   // Debounced search — the dataset is large (~40k items in vanilla AC)
   // so wait 300ms after the last keystroke before hitting the DB.
@@ -375,7 +324,6 @@ export function InventoryScreen() {
                 key={item.entry}
                 item={item}
                 iconMap={iconMap}
-                tooltipData={tooltipData}
                 onSend={() => setSendingFor(item)}
                 canSend={character != null}
               />
@@ -401,13 +349,11 @@ export function InventoryScreen() {
 function ItemTile({
   item,
   iconMap,
-  tooltipData,
   onSend,
   canSend,
 }: {
   item: ItemSummary
   iconMap: Record<string, string>
-  tooltipData: TooltipData | null
   onSend: () => void
   canSend: boolean
 }) {
@@ -420,11 +366,7 @@ function ItemTile({
           wrapper as siblings, so hovering them doesn't fire the
           tooltip — they're discrete actions that don't need an
           info popover competing for attention. */}
-      <ItemTooltip
-        entry={item.entry}
-        tooltipData={tooltipData}
-        side="right"
-      >
+      <ItemTooltip entry={item.entry} side="right">
         <div className="flex min-w-0 flex-1 cursor-help items-center gap-3">
           <ItemIconFramed
             iconName={iconName}
@@ -484,7 +426,7 @@ function SendItemDialog({
   onClose,
 }: {
   item: ItemSummary | null
-  character: ReturnType<typeof useSelectedCharacter>
+  character: GameCharacter | null
   onClose: () => void
 }) {
   const open = item != null && character != null

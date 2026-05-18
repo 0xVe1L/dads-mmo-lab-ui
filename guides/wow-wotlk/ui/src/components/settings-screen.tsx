@@ -17,6 +17,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog"
 
 import { Button } from "@/components/ui/button"
 import { ControllerSupportSection } from "@/components/controller-support-section"
+import { useServerState } from "@/components/server-state-context"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
 import { cn } from "@/lib/utils"
 
@@ -75,6 +76,12 @@ type TooltipCacheStatus =
     }
 
 export function SettingsScreen() {
+  // After any successful extract/wipe we call this so the in-memory
+  // caches that the rest of the app reads from (Inventory grid,
+  // Dashboard paperdoll, any ItemTooltip) pick up the new data
+  // without an app restart.
+  const { refreshEnrichmentCaches } = useServerState()
+
   const [iconStatus, setIconStatus] = React.useState<IconCacheStatus | null>(
     null
   )
@@ -151,7 +158,7 @@ export function SettingsScreen() {
     clearProgress("icons")
     try {
       await trackedInvoke("extract_item_icons")
-      await refreshStatuses()
+      await Promise.all([refreshStatuses(), refreshEnrichmentCaches()])
     } catch (e) {
       setError(typeof e === "string" ? e : String(e))
     } finally {
@@ -166,7 +173,7 @@ export function SettingsScreen() {
     clearProgress("tooltips")
     try {
       await trackedInvoke("extract_tooltip_data")
-      await refreshStatuses()
+      await Promise.all([refreshStatuses(), refreshEnrichmentCaches()])
     } catch (e) {
       setError(typeof e === "string" ? e : String(e))
     } finally {
@@ -186,7 +193,7 @@ export function SettingsScreen() {
       // double the disk pressure for no real wall-clock win.
       await trackedInvoke("extract_item_icons")
       await trackedInvoke("extract_tooltip_data")
-      await refreshStatuses()
+      await Promise.all([refreshStatuses(), refreshEnrichmentCaches()])
     } catch (e) {
       setError(typeof e === "string" ? e : String(e))
     } finally {
@@ -200,7 +207,7 @@ export function SettingsScreen() {
     setError(null)
     try {
       await trackedInvoke(command)
-      await refreshStatuses()
+      await Promise.all([refreshStatuses(), refreshEnrichmentCaches()])
     } catch (e) {
       setError(typeof e === "string" ? e : String(e))
     }

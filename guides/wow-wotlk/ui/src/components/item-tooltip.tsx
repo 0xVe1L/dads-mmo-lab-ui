@@ -5,6 +5,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
+import { useServerState } from "@/components/server-state-context"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
 import {
   BONDING_LABELS,
@@ -157,19 +158,20 @@ async function loadItemMinis(entries: number[]): Promise<ItemMini[]> {
 
 export function ItemTooltip({
   entry,
-  tooltipData,
   children,
   side = "right",
   align = "start",
 }: {
   entry: number
-  /** Full tooltip-cache from Settings enrichment (optional). When
-   * absent, spell/set lines are skipped. */
-  tooltipData?: TooltipData | null
   children: React.ReactNode
   side?: "top" | "right" | "bottom" | "left"
   align?: "start" | "center" | "end"
 }) {
+  // Pulled from context so every ItemTooltip call site shares the
+  // same in-memory enrichment cache — no prop drilling, and the
+  // ~5-10MB tooltip JSON loads once at app start instead of per
+  // mount of whichever page is rendering us.
+  const { tooltipData } = useServerState()
   const [details, setDetails] = React.useState<ItemDetails | null>(
     () => detailsCache.get(entry) ?? null
   )

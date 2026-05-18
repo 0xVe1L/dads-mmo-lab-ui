@@ -193,6 +193,35 @@ export type GameCharacter = {
   class: number
 }
 
+// ── Enrichment caches (icon map + tooltip data) ────────────────────
+// These two JSON blobs come from the Settings page extractors. We
+// load them ONCE at app start into context so:
+//   - the Inventory grid and Dashboard paperdoll don't pay the
+//     ~250-500ms IPC + parse cost on every navigation back
+//   - any future surface that renders items / spells (NPC browser,
+//     bag/bank tab, etc.) reads from the same shared state
+// Loaders silently no-op if the cache file is missing — pages
+// degrade gracefully (icons fall back to entry chits, tooltips
+// skip the green Equip/Use lines).
+
+export type SpellEntry = {
+  name: string
+  description: string
+  aura_description: string
+  icon: string
+}
+
+export type ItemSetEntry = {
+  name: string
+  items: number[]
+  bonuses: { threshold: number; spell_id: number }[]
+}
+
+export type TooltipData = {
+  spells: Record<string, SpellEntry>
+  sets: Record<string, ItemSetEntry>
+}
+
 /** UI page-level routing — no router lib, just an enum in context. */
 export type ActivePage =
   | "dashboard"
@@ -260,6 +289,15 @@ type ServerState = {
   selectedCharacterGuid: number | null
   selectedCharacter: GameCharacter | null
   setSelectedCharacterGuid: (guid: number | null) => Promise<void>
+
+  // Enrichment caches — loaded once at app start, shared by every
+  // item-rendering surface. Empty / null means the extractor hasn't
+  // been run yet (Settings → Data enrichment). Call
+  // `refreshEnrichmentCaches()` after a successful extract to pull
+  // the new data in without an app restart.
+  iconMap: Record<string, string>
+  tooltipData: TooltipData | null
+  refreshEnrichmentCaches: () => Promise<void>
 }
 
 const ServerStateContext = React.createContext<ServerState | null>(null)
@@ -478,6 +516,8 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
   const [selectedCharacterGuid, setSelectedCharacterGuidState] = React.useState<
     number | null
   >(null)
+  const [iconMap, setIconMap] = React.useState<Record<string, string>>({})
+  const [tooltipData, setTooltipData] = React.useState<TooltipData | null>(null)
 
   // ── Server-control state ──────────────────────────────────────────────
   const [worldserverStatus, setWorldserverStatus] = React.useState<
@@ -588,6 +628,50 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       .then((g) => setSelectedCharacterGuidState(g ?? null))
       .catch((e) => console.warn("get_selected_character_guid failed", e))
   }, [])
+
+  // Auto-refresh the characters list when the worldserver is
+  // reachable. Without this, the persisted selectedCharacterGuid
+  // never resolves to a real character on app start — pickers do
+  // their own refresh on open, but the sidebar card needs the list
+  // populated BEFORE the user interacts with anything to surface
+  // their previous selection. We also re-fetch when the worldserver
+  // transitions to "running" so newly-started servers pick up.
+  React.useEffect(() => {
+    if (!isTauri()) return
+    if (worldserverStatus !== "running") return
+    refreshCharacters().catch(() => {
+      // Surface in console only — the worldserver might be transitioning;
+      // a future status flip will re-trigger this effect.
+    })
+  }, [worldserverStatus, refreshCharacters])
+
+  // Enrichment-cache loader. Pulls both JSON blobs in parallel; each
+  // tolerates failure (sets to empty) so a missing cache file just
+  // means consumers degrade gracefully.
+  const refreshEnrichmentCaches = React.useCallback(async () => {
+    if (!isTauri()) return
+    const [iconRes, tooltipRes] = await Promise.allSettled([
+      trackedInvoke<Record<string, string>>("load_item_icon_map"),
+      trackedInvoke<{
+        spells: TooltipData["spells"]
+        sets: TooltipData["sets"]
+      }>("load_tooltip_data"),
+    ])
+    setIconMap(iconRes.status === "fulfilled" ? iconRes.value : {})
+    setTooltipData(
+      tooltipRes.status === "fulfilled"
+        ? { spells: tooltipRes.value.spells, sets: tooltipRes.value.sets }
+        : null
+    )
+  }, [])
+
+  // Eager-load on provider mount. The ~5-10MB tooltip JSON is the
+  // expensive one — doing it once here at app start (during the
+  // welcome / install screen) instead of every Dashboard / Inventory
+  // mount eliminates the 250-500ms hang on every navigation back.
+  React.useEffect(() => {
+    void refreshEnrichmentCaches()
+  }, [refreshEnrichmentCaches])
 
   const setSelectedCharacterGuid = React.useCallback(
     async (guid: number | null) => {
@@ -945,6 +1029,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       selectedCharacterGuid,
       selectedCharacter,
       setSelectedCharacterGuid,
+      iconMap,
+      tooltipData,
+      refreshEnrichmentCaches,
     }),
     [
       installs,
@@ -976,6 +1063,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       selectedCharacterGuid,
       selectedCharacter,
       setSelectedCharacterGuid,
+      iconMap,
+      tooltipData,
+      refreshEnrichmentCaches,
     ]
   )
 

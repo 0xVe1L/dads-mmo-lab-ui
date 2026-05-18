@@ -25,9 +25,17 @@ pub struct EquippedItem {
     /// Equipment slot 0..18 (Head/Neck/.../Tabard — see EQUIP_SLOT_LABELS
     /// on the frontend for the mapping).
     pub slot: u32,
-    /// item_template.entry — the frontend uses this for the icon (via
-    /// the iconMap) and tooltip lookup (via get_item_details).
+    /// item_template.entry — the frontend uses this as the tooltip
+    /// lookup key (via get_item_details).
     pub entry: u32,
+    /// item_template.displayid — the frontend uses THIS (not entry)
+    /// to look up the icon name in the icon-cache map (which is keyed
+    /// by displayid). Used to be missing; without it every paperdoll
+    /// slot rendered the fallback "#entry" chit.
+    pub display_id: u32,
+    /// 0..7 item quality. Lets ItemIconFramed color the fallback chit
+    /// when no icon is cached yet.
+    pub quality: u32,
     /// Stack count. Always 1 for true equip slots but included for
     /// consistency with bag/bank slot rendering.
     pub count: u32,
@@ -109,12 +117,15 @@ pub fn get_character_paperdoll(guid: u64) -> Result<CharacterPaperdoll, String> 
     let u64_at = |s: &str| s.trim().parse::<u64>().unwrap_or(0);
     let u32_at = |s: &str| s.trim().parse::<u32>().unwrap_or(0);
 
-    // Equipped items: bag = 0 + slot < 19. item_instance.itemEntry is
-    // the item_template.entry value.
+    // Equipped items: bag = 0 + slot < 19. Join item_template so we
+    // can return displayid (for icon lookup — iconMap is keyed by
+    // displayid, not entry) and quality (for the fallback chit color).
     let equip_sql = format!(
-        "SELECT ci.slot, ii.itemEntry, ii.count \
+        "SELECT ci.slot, ii.itemEntry, COALESCE(it.displayid, 0), \
+                COALESCE(it.Quality, 0), ii.count \
          FROM acore_characters.character_inventory ci \
          JOIN acore_characters.item_instance ii ON ii.guid = ci.item \
+         LEFT JOIN acore_world.item_template it ON it.entry = ii.itemEntry \
          WHERE ci.guid = {guid} AND ci.bag = 0 AND ci.slot < 19 \
          ORDER BY ci.slot;"
     );
@@ -131,13 +142,15 @@ pub fn get_character_paperdoll(guid: u64) -> Result<CharacterPaperdoll, String> 
     let mut equipped = Vec::new();
     for row in String::from_utf8_lossy(&equip_out.stdout).lines() {
         let p: Vec<&str> = row.split('\t').collect();
-        if p.len() < 3 {
+        if p.len() < 5 {
             continue;
         }
         equipped.push(EquippedItem {
             slot: u32_at(p[0]),
             entry: u32_at(p[1]),
-            count: u32_at(p[2]).max(1),
+            display_id: u32_at(p[2]),
+            quality: u32_at(p[3]),
+            count: u32_at(p[4]).max(1),
         });
     }
 
