@@ -20,7 +20,9 @@ import {
   ArrowRightIcon,
   CaretDownIcon,
   FloppyDiskBackIcon,
+  HouseIcon,
   PlayIcon,
+  PuzzlePieceIcon,
   StopIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react"
@@ -45,6 +47,9 @@ export function NavMain({
     startServer,
     stopServer,
     restartServer,
+    activePage,
+    setActivePage,
+    ahbotNeedsConfig,
   } = useServerState()
 
   const actionInFlight = serverActionStatus === "running"
@@ -77,10 +82,54 @@ export function NavMain({
             )}
           </SidebarMenuItem>
         </SidebarMenu>
+        {/* Real, clickable nav entries — Dashboard + Modules. The rest
+            of the data.navMain items below are placeholders kept from
+            the shadcn starter (Lifecycle / Analytics / etc.) and stay
+            disabled until we build those pages out. */}
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Dashboard"
+              onClick={() => setActivePage("dashboard")}
+              isActive={activePage === "dashboard"}
+              disabled={!installed}
+            >
+              <HouseIcon />
+              <span>Dashboard</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip={
+                ahbotNeedsConfig
+                  ? "Modules (Auction House Bot needs setup!)"
+                  : "Modules"
+              }
+              onClick={() => setActivePage("modules")}
+              isActive={activePage === "modules"}
+              disabled={!installed}
+              className="relative"
+            >
+              <PuzzlePieceIcon />
+              <span>Modules</span>
+              {/* Soft-blinking amber dot pulls the user toward Modules
+                  while AH Bot is installed-but-inert. The animate-ping
+                  ring + solid dot pattern is the conventional shadcn
+                  "needs attention" indicator. */}
+              {ahbotNeedsConfig && (
+                <span className="ml-auto flex size-2.5 items-center justify-center">
+                  <span className="absolute inline-flex size-2.5 animate-ping rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+                </span>
+              )}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton tooltip={item.title} disabled={!installed}>
+              <SidebarMenuButton tooltip={item.title} disabled>
                 {item.icon}
                 <span>{item.title}</span>
               </SidebarMenuButton>

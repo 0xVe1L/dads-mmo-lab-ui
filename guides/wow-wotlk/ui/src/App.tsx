@@ -1,9 +1,11 @@
 import type { CSSProperties } from "react"
 
+import { AhBotIntroOverlay } from "@/components/ahbot-intro-overlay"
 import { AppSidebar } from "@/components/app-sidebar"
 import { DemoDashboard } from "@/components/demo-dashboard"
 import { InstallOnboarding } from "@/components/install-onboarding"
 import { InstallProgressScreen } from "@/components/install-progress-screen"
+import { ModulesScreen } from "@/components/modules-screen"
 import { ServerControlScreen } from "@/components/server-control-screen"
 import {
   ServerStateProvider,
@@ -32,26 +34,40 @@ function AppShell() {
     installStatus,
     serverActionStatus,
     serverActionKind,
+    activePage,
   } = useServerState()
 
   // Routing priority: install lifecycle takes the main pane first, then
-  // any in-flight server action, then the dashboard / welcome screen.
+  // any in-flight server action, then the user-selected page (dashboard
+  // / modules), then the welcome screen for pre-install state.
   const showInstallScreen = installStatus !== "idle"
   const showServerActionScreen =
     !showInstallScreen && serverActionStatus !== "idle"
+  const isPagedView =
+    !showInstallScreen && !showServerActionScreen && installed
+  const showModules = isPagedView && activePage === "modules"
+  const showDashboard = isPagedView && activePage === "dashboard"
 
   let title = "Welcome!"
   if (showInstallScreen) title = "Installing"
   else if (showServerActionScreen)
-    title = serverActionKind === "stop" ? "Stopping server" : "Starting server"
-  else if (installed) title = "Documents"
+    title =
+      serverActionKind === "stop"
+        ? "Stopping server"
+        : serverActionKind === "restart"
+          ? "Restarting server"
+          : "Starting server"
+  else if (showModules) title = "Modules"
+  else if (showDashboard) title = "Dashboard"
 
   let mainContent
   if (showInstallScreen) {
     mainContent = <InstallProgressScreen />
   } else if (showServerActionScreen) {
     mainContent = <ServerControlScreen />
-  } else if (installed) {
+  } else if (showModules) {
+    mainContent = <ModulesScreen />
+  } else if (showDashboard) {
     mainContent = <DemoDashboard />
   } else {
     mainContent = <WelcomeScreen />
@@ -74,6 +90,11 @@ function AppShell() {
         </SidebarInset>
       </SidebarProvider>
       <InstallOnboarding open={installOpen} onOpenChange={setInstallOpen} />
+      {/* First-time overlay only renders when on the dashboard — we
+          don't want it to pop up during install or while a server
+          action is in flight. The overlay checks ahbotNeedsConfig
+          internally and respects a localStorage dismissal flag. */}
+      {showDashboard && <AhBotIntroOverlay />}
     </>
   )
 }

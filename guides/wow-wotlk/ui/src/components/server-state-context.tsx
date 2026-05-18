@@ -164,6 +164,31 @@ type ConsoleState = {
   topPending: InstallLogLine | null
 }
 
+// ── Modules-page types ──────────────────────────────────────────────────
+
+export type InstalledModule = {
+  /** Repo key e.g. `mod-ah-bot`. */
+  key: string
+  /** Display name e.g. "Auction House Bot". */
+  name: string
+  module_path: string
+  conf_path: string | null
+  /** Parsed `key = value` pairs from the module's active conf. */
+  conf: Record<string, string>
+}
+
+export type GameCharacter = {
+  guid: number
+  name: string
+  account: number
+  level: number
+  race: number
+  class: number
+}
+
+/** UI page-level routing — no router lib, just an enum in context. */
+export type ActivePage = "dashboard" | "modules"
+
 type ServerState = {
   // Detection
   installs: DetectedInstall[]
@@ -198,6 +223,21 @@ type ServerState = {
   stopServer: () => Promise<void>
   restartServer: () => Promise<void>
   resetServerAction: () => void
+
+  // Page routing
+  activePage: ActivePage
+  setActivePage: (page: ActivePage) => void
+
+  // Modules
+  installedModules: InstalledModule[]
+  refreshInstalledModules: () => Promise<void>
+  /** Derived: AH Bot installed but Account/GUID still placeholder (0). */
+  ahbotNeedsConfig: boolean
+  /** Characters list, populated on demand by the AH Bot wizard. */
+  characters: GameCharacter[]
+  refreshCharacters: () => Promise<void>
+  /** Apply AH Bot character config + restart worldserver. */
+  configureAhbotCharacter: (account: number, guid: number) => Promise<void>
 }
 
 const ServerStateContext = React.createContext<ServerState | null>(null)
@@ -407,6 +447,13 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
     null
   )
 
+  // ── Page routing + modules state ──────────────────────────────────────
+  const [activePage, setActivePage] = React.useState<ActivePage>("dashboard")
+  const [installedModules, setInstalledModules] = React.useState<
+    InstalledModule[]
+  >([])
+  const [characters, setCharacters] = React.useState<GameCharacter[]>([])
+
   // ── Server-control state ──────────────────────────────────────────────
   const [worldserverStatus, setWorldserverStatus] = React.useState<
     WorldserverStatus | "checking"
@@ -464,6 +511,59 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
   React.useEffect(() => {
     void refreshServerStatus()
   }, [refreshServerStatus])
+
+  // ── Module + character refreshers ─────────────────────────────────────
+  const refreshInstalledModules = React.useCallback(async () => {
+    if (!isTauri()) {
+      setInstalledModules([])
+      return
+    }
+    try {
+      const list = await trackedInvoke<InstalledModule[]>(
+        "list_installed_modules"
+      )
+      setInstalledModules(list)
+    } catch (err) {
+      // Not installed yet, or installer hasn't run the bind mount setup
+      // — silent. The Modules page handles the empty case.
+      console.warn("list_installed_modules failed:", err)
+      setInstalledModules([])
+    }
+  }, [])
+
+  React.useEffect(() => {
+    void refreshInstalledModules()
+  }, [refreshInstalledModules, installs])
+
+  const refreshCharacters = React.useCallback(async () => {
+    if (!isTauri()) {
+      setCharacters([])
+      return
+    }
+    try {
+      const list = await trackedInvoke<GameCharacter[]>("list_characters")
+      setCharacters(list)
+    } catch (err) {
+      // Server may not be running yet — the wizard surfaces the error.
+      console.warn("list_characters failed:", err)
+      setCharacters([])
+      throw err
+    }
+  }, [])
+
+  // Derive whether AH Bot is installed but unconfigured. AH Bot's conf
+  // ships with Account=0 / GUID=0 from install-wow-ui.sh as a placeholder
+  // — the post-install wizard flips them to real values + EnableSeller=1.
+  const ahbotNeedsConfig = React.useMemo(() => {
+    const ahbot = installedModules.find((m) => m.key === "mod-ah-bot")
+    if (!ahbot) return false
+    const guid = ahbot.conf["AuctionHouseBot.GUID"] ?? "0"
+    const account = ahbot.conf["AuctionHouseBot.Account"] ?? "0"
+    const enableSeller = ahbot.conf["AuctionHouseBot.EnableSeller"] ?? "0"
+    // Treat any of {guid=0, account=0, EnableSeller=0} as "not yet configured".
+    // The wizard flips all three together so they're correlated in practice.
+    return guid === "0" || account === "0" || enableSeller === "0"
+  }, [installedModules])
 
   // Subscribe to install:* events for the whole app lifetime using the
   // promise-thenable cleanup pattern — StrictMode and HMR safe.
@@ -723,6 +823,22 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
     setServerConsoleState(EMPTY_CONSOLE_STATE)
   }, [])
 
+  const restartServerInternal = restartServer
+  const configureAhbotCharacter = React.useCallback(
+    async (account: number, guid: number) => {
+      if (!isTauri()) return
+      await trackedInvoke("configure_ahbot_character", { account, guid })
+      // Refresh modules so ahbotNeedsConfig flips to false straight away,
+      // before the restart even starts streaming output.
+      await refreshInstalledModules()
+      // Restart worldserver so the new conf is picked up. The user sees
+      // the server-control screen with the live restart output and the
+      // celebratory "AZEROTH IS READY!" line on completion.
+      await restartServerInternal()
+    },
+    [refreshInstalledModules, restartServerInternal]
+  )
+
   const value = React.useMemo<ServerState>(
     () => ({
       installs,
@@ -749,6 +865,14 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       stopServer,
       restartServer,
       resetServerAction,
+      activePage,
+      setActivePage,
+      installedModules,
+      refreshInstalledModules,
+      ahbotNeedsConfig,
+      characters,
+      refreshCharacters,
+      configureAhbotCharacter,
     }),
     [
       installs,
@@ -770,6 +894,13 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       stopServer,
       restartServer,
       resetServerAction,
+      activePage,
+      installedModules,
+      refreshInstalledModules,
+      ahbotNeedsConfig,
+      characters,
+      refreshCharacters,
+      configureAhbotCharacter,
     ]
   )
 

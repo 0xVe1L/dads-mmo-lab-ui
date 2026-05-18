@@ -3,6 +3,7 @@ use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
 
 mod install;
+mod modules;
 mod server;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -62,7 +63,10 @@ pub fn run() {
             server::get_server_status,
             server::start_server,
             server::stop_server,
-            server::restart_server
+            server::restart_server,
+            modules::list_installed_modules,
+            modules::list_characters,
+            modules::configure_ahbot_character
         ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
