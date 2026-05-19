@@ -24,6 +24,17 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["macros", "process", "io-util", "rt", "sync", "time"] }
+dirs = "5"
+tauri-plugin-dialog = "2.7.1"
+base64 = "0.22.1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+wow-mpq = "0.6.4"
+wow_dbc = { version = "0.3.0", features = ["wrath"] }
+zip = "8.6.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 
 [profile.dev]
@@ -35,3 +46,7 @@ lto = true        # Enables link-time-optimizations.
 opt-level = "s"   # Prioritizes small binary size. Use `3` if you prefer speed.
 panic = "abort"   # Higher performance by disabling panic handlers.
 strip = true      # Ensures debug symbols are removed.
+
+[dev-dependencies]
+image = "0.25.10"
+wow-blp = "0.6.4"

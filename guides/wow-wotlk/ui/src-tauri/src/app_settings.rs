@@ -1,0 +1,144 @@
+//! App-level (not install-specific) settings persisted as JSON.
+//!
+//! Lives at `~/.config/dads-mmo-lab/settings.json` on Linux, following
+//! the XDG Base Directory spec. The directory and file are created on
+//! first save; loads against a missing file return defaults without
+//! erroring — that's the "fresh user, no settings yet" path.
+//!
+//! Kept deliberately small + flat. Anything install-specific belongs
+//! in `<install>/.dads-mmo-lab/install.json` instead.
+
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(default)]
+pub struct AppSettings {
+    /// Path to the user's WoW 3.3.5a client install. Set via the
+    /// WoW-client picker on the dashboard. Used by wow_client for
+    /// realmlist management and (later) addon installation.
+    pub wow_client_dir: Option<String>,
+    /// Notice IDs the user has clicked-to-dismiss. We persist these
+    /// so a dismissal sticks across restarts — e.g. the "enrich your
+    /// items in Settings" well on the Inventory page. List rather than
+    /// set so the JSON shape stays diff-friendly; lookups are O(n)
+    /// against a tiny list which is fine.
+    pub dismissed_notices: Vec<String>,
+    /// Inventory page: include items whose names contain "DEPRECATED"
+    /// (Blizzard's marker for items that are no longer obtainable,
+    /// usually the old version of an item that got reworked). Off by
+    /// default since most searches want the live/current item only.
+    pub inventory_show_deprecated: bool,
+    /// GUID of the user's active "main" character, surfaced via the
+    /// sidebar's GlobalCharacterCard and consumed by any page that
+    /// acts on "the player's character" (Inventory send, Teleport,
+    /// etc.). Stored as the i64 GUID rather than the row index so a
+    /// chardb wipe doesn't silently rebind to whatever new char took
+    /// that slot. None when nothing's selected. Frontend silently
+    /// clears the selection if the GUID no longer exists.
+    pub selected_character_guid: Option<u64>,
+}
+
+fn settings_path() -> Option<PathBuf> {
+    // dirs::config_dir() returns ~/.config on Linux per XDG.
+    dirs::config_dir().map(|p| p.join("dads-mmo-lab").join("settings.json"))
+}
+
+/// Read settings from disk. Returns defaults if the file is missing
+/// or unreadable — callers don't need to distinguish "first run" from
+/// "I/O error" for this surface.
+pub fn load() -> AppSettings {
+    let Some(path) = settings_path() else {
+        return AppSettings::default();
+    };
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return AppSettings::default();
+    };
+    serde_json::from_str(&contents).unwrap_or_default()
+}
+
+/// Atomically replace settings.json with the new contents. Creates
+/// the parent directory if it doesn't exist yet.
+pub fn save(settings: &AppSettings) -> Result<(), String> {
+    let path = settings_path()
+        .ok_or_else(|| "Could not resolve config directory".to_string())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("mkdir {}: {}", parent.display(), e))?;
+    }
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("serialize settings: {e}"))?;
+    std::fs::write(&path, json)
+        .map_err(|e| format!("write {}: {}", path.display(), e))?;
+    Ok(())
+}
+
+// ── Dismissable-notice plumbing ─────────────────────────────────────
+// Notices are small dismiss-once UI prompts (e.g. "Enrich items in
+// Settings"). We use opaque string IDs rather than enums so frontend
+// can add new notices without round-tripping a Rust change. Frontend
+// owns the canonical ID strings.
+
+#[tauri::command]
+pub fn is_notice_dismissed(notice_id: String) -> bool {
+    load().dismissed_notices.iter().any(|n| n == &notice_id)
+}
+
+#[tauri::command]
+pub fn dismiss_notice(notice_id: String) -> Result<(), String> {
+    let mut s = load();
+    if !s.dismissed_notices.iter().any(|n| n == &notice_id) {
+        s.dismissed_notices.push(notice_id);
+        save(&s)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn undismiss_notice(notice_id: String) -> Result<(), String> {
+    let mut s = load();
+    let before = s.dismissed_notices.len();
+    s.dismissed_notices.retain(|n| n != &notice_id);
+    if s.dismissed_notices.len() != before {
+        save(&s)?;
+    }
+    Ok(())
+}
+
+// ── Inventory preferences ───────────────────────────────────────────
+// Persisted alongside the rest of AppSettings rather than in a separate
+// per-page preferences file — Inventory only has the one toggle today;
+// when there are several we can group into a struct.
+
+#[tauri::command]
+pub fn get_inventory_show_deprecated() -> bool {
+    load().inventory_show_deprecated
+}
+
+#[tauri::command]
+pub fn set_inventory_show_deprecated(value: bool) -> Result<(), String> {
+    let mut s = load();
+    if s.inventory_show_deprecated == value {
+        return Ok(());
+    }
+    s.inventory_show_deprecated = value;
+    save(&s)
+}
+
+// ── Selected (main) character ───────────────────────────────────────
+
+#[tauri::command]
+pub fn get_selected_character_guid() -> Option<u64> {
+    load().selected_character_guid
+}
+
+#[tauri::command]
+pub fn set_selected_character_guid(guid: Option<u64>) -> Result<(), String> {
+    let mut s = load();
+    if s.selected_character_guid == guid {
+        return Ok(());
+    }
+    s.selected_character_guid = guid;
+    save(&s)
+}

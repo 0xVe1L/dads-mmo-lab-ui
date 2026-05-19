@@ -1,8 +1,17 @@
 import type { CSSProperties } from "react"
 
+import { AhBotIntroOverlay } from "@/components/ahbot-intro-overlay"
 import { AppSidebar } from "@/components/app-sidebar"
-import { DemoDashboard } from "@/components/demo-dashboard"
+import { DashboardPlayerView } from "@/components/dashboard-player-view"
 import { InstallOnboarding } from "@/components/install-onboarding"
+import { InstallProgressScreen } from "@/components/install-progress-screen"
+import { InstallResumeBanner } from "@/components/install-resume-banner"
+import { InventoryScreen } from "@/components/inventory-screen"
+import { ModulesScreen } from "@/components/modules-screen"
+import { ServerControlScreen } from "@/components/server-control-screen"
+import { SettingsScreen } from "@/components/settings-screen"
+import { TeleportScreen } from "@/components/teleport-screen"
+import { WowClientCard } from "@/components/wow-client-card"
 import {
   ServerStateProvider,
   useServerState,
@@ -23,7 +32,79 @@ export default function App() {
 }
 
 function AppShell() {
-  const { installed, installOpen, setInstallOpen } = useServerState()
+  const {
+    installed,
+    installComplete,
+    installOpen,
+    setInstallOpen,
+    installStatus,
+    serverActionStatus,
+    serverActionKind,
+    activePage,
+  } = useServerState()
+
+  // Routing priority: install lifecycle takes the main pane first, then
+  // any in-flight server action, then the user-selected page (dashboard
+  // / modules), then the welcome screen for pre-install state.
+  const showInstallScreen = installStatus !== "idle"
+  const showServerActionScreen =
+    !showInstallScreen && serverActionStatus !== "idle"
+  const isPagedView =
+    !showInstallScreen && !showServerActionScreen && installed
+  const showModules = isPagedView && activePage === "modules"
+  const showTeleport = isPagedView && activePage === "teleport"
+  const showInventory = isPagedView && activePage === "inventory"
+  const showSettings = isPagedView && activePage === "settings"
+  const showDashboard = isPagedView && activePage === "dashboard"
+
+  let title = "Welcome!"
+  if (showInstallScreen) title = "Installing"
+  else if (showServerActionScreen)
+    title =
+      serverActionKind === "stop"
+        ? "Stopping server"
+        : serverActionKind === "restart"
+          ? "Restarting server"
+          : "Starting server"
+  else if (showModules) title = "Modules"
+  else if (showTeleport) title = "Teleport"
+  else if (showInventory) title = "Item Database"
+  else if (showSettings) title = "Settings"
+  else if (showDashboard) title = "Dashboard"
+
+  let mainContent
+  if (showInstallScreen) {
+    mainContent = <InstallProgressScreen />
+  } else if (showServerActionScreen) {
+    mainContent = <ServerControlScreen />
+  } else if (showModules) {
+    mainContent = <ModulesScreen />
+  } else if (showTeleport) {
+    mainContent = <TeleportScreen />
+  } else if (showInventory) {
+    mainContent = <InventoryScreen />
+  } else if (showSettings) {
+    mainContent = <SettingsScreen />
+  } else if (showDashboard) {
+    mainContent = (
+      // Banner row above the player paperdoll. Self-dismissing per
+      // localStorage, so they don't pester on every visit.
+      <div className="flex flex-1 flex-col">
+        <div className="space-y-3 px-4 pt-4 lg:px-6">
+          {/* Resume banner only shows for partial installs (banner
+              self-guards on installComplete). The realmlist reminder
+              is gated on installComplete here so the two are mutually
+              exclusive — a half-done install has bigger problems than
+              a missing realmlist edit. */}
+          <InstallResumeBanner />
+          {installComplete && <WowClientCard />}
+        </div>
+        <DashboardPlayerView />
+      </div>
+    )
+  } else {
+    mainContent = <WelcomeScreen />
+  }
 
   return (
     <>
@@ -37,13 +118,16 @@ function AppShell() {
       >
         <AppSidebar variant="inset" />
         <SidebarInset>
-          <SiteHeader title={installed ? "Documents" : "Welcome!"} />
-          <div className="flex flex-1 flex-col">
-            {installed ? <DemoDashboard /> : <WelcomeScreen />}
-          </div>
+          <SiteHeader title={title} />
+          <div className="flex flex-1 flex-col">{mainContent}</div>
         </SidebarInset>
       </SidebarProvider>
       <InstallOnboarding open={installOpen} onOpenChange={setInstallOpen} />
+      {/* First-time overlay only renders when on the dashboard — we
+          don't want it to pop up during install or while a server
+          action is in flight. The overlay checks ahbotNeedsConfig
+          internally and respects a localStorage dismissal flag. */}
+      {showDashboard && <AhBotIntroOverlay />}
     </>
   )
 }
