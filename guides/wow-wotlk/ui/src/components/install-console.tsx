@@ -8,6 +8,7 @@ import {
 
 import { cn } from "@/lib/utils"
 import { LottieLoop } from "@/components/lottie-loop"
+import { Progress } from "@/components/ui/progress"
 import type {
   InstallLogEntry,
   InstallLogLine,
@@ -171,6 +172,11 @@ function ConsoleSection({
 }) {
   const lineCount = section.lines.length + (section.pending ? 1 : 0)
   const isActive = section.state === "active"
+  // Show the compile progress bar only while the section is live and we've
+  // actually parsed a `[ NN%]` marker. Done sections collapse back to the
+  // plain title + check.
+  const pct = section.progress
+  const showBar = isActive && pct != null
 
   return (
     <details
@@ -199,10 +205,33 @@ function ConsoleSection({
             className="size-3.5 shrink-0 text-emerald-500"
           />
         )}
-        <span className="truncate text-[12.5px]">{section.title}</span>
-        <span className="ml-auto shrink-0 text-[11px] text-zinc-500">
-          {lineCount.toLocaleString()} {lineCount === 1 ? "line" : "lines"}
-        </span>
+
+        {/* Title (+ compile progress bar when building). Grows to fill. */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[12.5px]">{section.title}</span>
+            {showBar && (
+              <span className="ml-auto shrink-0 text-[11px] tabular-nums text-zinc-400">
+                {pct}%
+              </span>
+            )}
+          </div>
+          {showBar && (
+            <Progress value={pct} className="mt-1 h-1 bg-zinc-700/60" />
+          )}
+        </div>
+
+        {/* Line count + "expand to follow live" hint, right-justified. */}
+        <div className="ml-1 flex shrink-0 flex-col items-end leading-tight">
+          <span className="text-[11px] text-zinc-500">
+            {lineCount.toLocaleString()} {lineCount === 1 ? "line" : "lines"}
+          </span>
+          {!open && (
+            <span className="text-[11px] text-zinc-600">
+              expand to follow live
+            </span>
+          )}
+        </div>
       </summary>
       {open && (
         <div className="border-t border-zinc-800/80 p-2">

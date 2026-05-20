@@ -26,6 +26,7 @@ import {
   WarningCircleIcon,
 } from "@phosphor-icons/react"
 import { LottieLoop } from "@/components/lottie-loop"
+import { PreInstallTooltip } from "@/components/pre-install-tooltip"
 import {
   useServerState,
   type ActivePage,
@@ -71,18 +72,27 @@ function ServerActionGroup() {
     openInstall,
     worldserverStatus,
     serverActionStatus,
+    installStatus,
     startServer,
     stopServer,
     restartServer,
   } = useServerState()
 
   const actionInFlight = serverActionStatus === "running"
+  // An install (or its cancel/cleanup) is actively running. The main pane
+  // shows the install console; the sidebar button reflects it as a disabled
+  // "Installing…" so it can't be re-triggered mid-run.
+  const installing =
+    installStatus === "running" ||
+    installStatus === "cancelling" ||
+    installStatus === "cleaning"
   // "Stop" or "Restart" is meaningful when the server is up or
   // thrashing. We show the button-group + dropdown variant in both
   // of those states.
   const showStopGroup =
     installed &&
     !actionInFlight &&
+    !installing &&
     (worldserverStatus === "running" || worldserverStatus === "crashed")
 
   return (
@@ -99,6 +109,7 @@ function ServerActionGroup() {
             ) : (
               <PrimaryServerButton
                 installed={installed}
+                installing={installing}
                 actionInFlight={actionInFlight}
                 worldserverStatus={worldserverStatus}
                 onInstall={openInstall}
@@ -139,21 +150,23 @@ export function NavMain({ groups }: { groups: NavGroupSpec[] }) {
                   entry.page != null && activePage === entry.page
                 return (
                   <SidebarMenuItem key={entry.title}>
-                    <SidebarMenuButton
-                      tooltip={entry.tooltip ?? entry.title}
-                      onClick={() => {
-                        if (!entry.disabled && entry.page) {
-                          setActivePage(entry.page)
-                        }
-                      }}
-                      isActive={isActive}
-                      disabled={isDisabled}
-                      className={entry.notify ? "relative" : undefined}
-                    >
-                      {entry.icon}
-                      <span>{entry.title}</span>
-                      {entry.notify && <NotificationDot />}
-                    </SidebarMenuButton>
+                    <PreInstallTooltip show={!installed}>
+                      <SidebarMenuButton
+                        tooltip={entry.tooltip ?? entry.title}
+                        onClick={() => {
+                          if (!entry.disabled && entry.page) {
+                            setActivePage(entry.page)
+                          }
+                        }}
+                        isActive={isActive}
+                        disabled={isDisabled}
+                        className={entry.notify ? "relative" : undefined}
+                      >
+                        {entry.icon}
+                        <span>{entry.title}</span>
+                        {entry.notify && <NotificationDot />}
+                      </SidebarMenuButton>
+                    </PreInstallTooltip>
                   </SidebarMenuItem>
                 )
               })}
@@ -190,12 +203,14 @@ const PRIMARY_BUTTON_CLASS = `${PRIMARY_BUTTON_BASE} ${TRAILING_ARROW_AUTO}`
 
 function PrimaryServerButton({
   installed,
+  installing,
   actionInFlight,
   worldserverStatus,
   onInstall,
   onStart,
 }: {
   installed: boolean
+  installing: boolean
   actionInFlight: boolean
   worldserverStatus: ReturnType<typeof useServerState>["worldserverStatus"]
   onInstall: () => void
@@ -207,7 +222,15 @@ function PrimaryServerButton({
   let onClick: () => void
   let disabled = false
 
-  if (!installed) {
+  if (installing) {
+    label = "Installing…"
+    leadingIcon = (
+      <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
+    )
+    trailingIcon = null
+    onClick = () => {}
+    disabled = true
+  } else if (!installed) {
     label = "INSTALL SERVER"
     leadingIcon = <FloppyDiskBackIcon />
     onClick = onInstall

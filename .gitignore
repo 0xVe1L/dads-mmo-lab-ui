@@ -5,3 +5,4 @@
 # VSCode workspace settings (machine-specific); allow shared extension recommendations
 .vscode/*
 !.vscode/extensions.json
+.logs

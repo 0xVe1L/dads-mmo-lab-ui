@@ -89,6 +89,13 @@ export type InstallSection = {
    * is committed/cleared the same way the top-level pending is.
    */
   pending: InstallLogLine | null
+  /**
+   * Latest CMake compile percentage seen in this section's output, parsed
+   * from lines like `[ 80%] Building CXX object …`. Drives the progress
+   * bar in the collapsed section header. null until the first `[ NN%]`
+   * marker shows up (e.g. during the apt-get phase before the compile).
+   */
+  progress: number | null
 }
 
 /**
@@ -345,6 +352,18 @@ function isActiveSection(
   return entry?.kind === "section" && entry.data.state === "active"
 }
 
+/**
+ * Pull a CMake build percentage out of a compile line, e.g.
+ * `#24 1996.5 [ 80%] Building CXX object …` → 80. Returns null if the line
+ * has no `[ NN%]` marker. Powers the section-header progress bar.
+ */
+function parseCompilePercent(text: string): number | null {
+  const m = text.match(/\[\s*(\d{1,3})%\]/)
+  if (!m) return null
+  const n = Number(m[1])
+  return n >= 0 && n <= 100 ? n : null
+}
+
 function applyTransient(
   prev: ConsoleState,
   stream: InstallLogLine["stream"],
@@ -367,7 +386,12 @@ function applyTransient(
         ...prev.log.slice(0, -1),
         {
           kind: "section",
-          data: { ...sec, lines: nextLines, pending: newLine },
+          data: {
+            ...sec,
+            lines: nextLines,
+            pending: newLine,
+            progress: parseCompilePercent(text) ?? sec.progress,
+          },
         },
       ],
       topPending: null,
@@ -406,7 +430,12 @@ function applyFinal(
         ...prev.log.slice(0, -1),
         {
           kind: "section",
-          data: { ...sec, lines: nextLines, pending: null },
+          data: {
+            ...sec,
+            lines: nextLines,
+            pending: null,
+            progress: parseCompilePercent(text) ?? sec.progress,
+          },
         },
       ],
       topPending: null,
@@ -441,6 +470,7 @@ function applySectionStart(
     state: "active",
     lines: [],
     pending: null,
+    progress: null,
   }
   // If a top-level transient is in flight, commit it before opening the
   // section so it stays in the outer log instead of being swallowed.
@@ -856,6 +886,35 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       setConsoleState(EMPTY_CONSOLE_STATE)
       setInstallExitCode(null)
       setInstallStatus("running")
+
+      // One-time privileged setup (Docker + BuildKit). Pops a single
+      // PolicyKit password prompt only when needed — a no-op if Docker is
+      // already usable or passwordless sudo is available. Must succeed
+      // before the installer runs, or its docker calls would fail.
+      try {
+        const boot = await trackedInvoke<{
+          needed: boolean
+          ran: boolean
+          message: string
+        }>("bootstrap_privileges")
+        if (boot.ran) {
+          setConsoleState((prev) =>
+            applyFinal(prev, "system", `✓ ${boot.message}`, nextId)
+          )
+        }
+      } catch (err) {
+        setInstallStatus("failed")
+        setConsoleState((prev) =>
+          applyFinal(
+            prev,
+            "system",
+            `Setup needs permission — ${String(err)}`,
+            nextId
+          )
+        )
+        return
+      }
+
       try {
         await trackedInvoke("start_install", {
           request: {

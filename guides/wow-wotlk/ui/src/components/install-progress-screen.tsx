@@ -44,6 +44,25 @@ export function InstallProgressScreen() {
   const isRunning = installStatus === "running"
   const isCancelling = installStatus === "cancelling"
   const isCleaning = installStatus === "cleaning"
+
+  // Elapsed-time ticker for the status chip. Anchored the first time the
+  // install goes live and kept running through cancel/cleanup; on a
+  // terminal status the interval stops and the last value stays frozen so
+  // the final runtime remains visible. The screen unmounts when the install
+  // resets to idle, so the ref re-anchors cleanly on the next run.
+  const isLive = isRunning || isCancelling || isCleaning
+  const startedAtRef = React.useRef<number | null>(null)
+  const [elapsedSec, setElapsedSec] = React.useState(0)
+  React.useEffect(() => {
+    if (!isLive) return
+    if (startedAtRef.current == null) startedAtRef.current = Date.now()
+    const id = window.setInterval(() => {
+      setElapsedSec(
+        Math.floor((Date.now() - (startedAtRef.current ?? Date.now())) / 1000)
+      )
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [isLive])
   const isTerminal =
     installStatus === "failed" ||
     installStatus === "succeeded" ||
@@ -84,7 +103,11 @@ export function InstallProgressScreen() {
             exitCode={installExitCode}
             filenamePrefix="install"
           />
-          <StatusBadge status={installStatus} exitCode={installExitCode} />
+          <StatusBadge
+            status={installStatus}
+            exitCode={installExitCode}
+            elapsedSec={elapsedSec}
+          />
         </div>
       </header>
 
@@ -169,18 +192,35 @@ export function InstallProgressScreen() {
   )
 }
 
+/** mm:ss, or h:mm:ss once past an hour (installs can run for hours). */
+function formatElapsed(totalSec: number): string {
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+}
+
 function StatusBadge({
   status,
   exitCode,
+  elapsedSec,
 }: {
   status: ReturnType<typeof useServerState>["installStatus"]
   exitCode: number | null
+  elapsedSec: number
 }) {
+  const timer = (
+    <span className="tabular-nums text-muted-foreground">
+      {formatElapsed(elapsedSec)}
+    </span>
+  )
   if (status === "running") {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
         <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
         Running
+        {timer}
       </span>
     )
   }
@@ -189,6 +229,7 @@ function StatusBadge({
       <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
         <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
         Cancelling…
+        {timer}
       </span>
     )
   }
@@ -197,6 +238,7 @@ function StatusBadge({
       <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
         <LottieLoop animationData={loadingAnimation} className="size-5 invert" />
         Cleaning up…
+        {timer}
       </span>
     )
   }

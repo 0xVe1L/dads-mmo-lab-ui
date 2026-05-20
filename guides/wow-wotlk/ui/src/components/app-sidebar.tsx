@@ -1,4 +1,5 @@
 import * as React from "react"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 
 import { GlobalCharacterCard } from "@/components/global-character-card"
 import { NavMain, type NavGroupSpec } from "@/components/nav-main"
@@ -19,6 +20,7 @@ import {
   GavelIcon,
   GearIcon,
   HouseIcon,
+  PowerIcon,
   PuzzlePieceIcon,
   QuestionIcon,
   RobotIcon,
@@ -26,6 +28,7 @@ import {
   TipJarIcon,
   UsersThreeIcon,
 } from "@phosphor-icons/react"
+import { isTauri } from "@/lib/tauri"
 import { WowIcon } from "@/components/wow-icon"
 
 /**
@@ -79,8 +82,10 @@ function buildNavGroups(ahbotNeedsConfig: boolean): NavGroupSpec[] {
 
 const SECONDARY_ITEMS = [
   { title: "Settings", icon: <GearIcon />, url: "#" },
-  { title: "Get Help", icon: <QuestionIcon />, url: "#" },
-  { title: "Support Us", icon: <TipJarIcon />, url: "#" },
+  // Help + Support stay reachable pre-install — a user who can't get the
+  // server going is exactly who needs the help/support links.
+  { title: "Get Help", icon: <QuestionIcon />, url: "#", alwaysEnabled: true },
+  { title: "Support Us", icon: <TipJarIcon />, url: "#", alwaysEnabled: true },
 ]
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -107,11 +112,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
+              size="lg"
               className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
               <a href="#">
-                <WowIcon size={20} />
-                <span className="text-base font-semibold">WoW 3.3.5a Server</span>
+                <WowIcon size={32} />
+                <span className="text-lg font-semibold">WoW 3.3.5a Server</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -123,7 +129,40 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarFooter>
         <GlobalCharacterCard />
+        <SidebarQuitButton />
       </SidebarFooter>
     </Sidebar>
+  )
+}
+
+/**
+ * Exit-the-app control. In fullscreen there's no window titlebar (and
+ * thus no close button), so the user needs an in-app way out. Closing
+ * the main window ends the process. Always enabled — unlike the rest of
+ * the menu, quitting must work regardless of install state.
+ */
+function SidebarQuitButton() {
+  const handleQuit = React.useCallback(async () => {
+    if (!isTauri()) return
+    try {
+      await getCurrentWindow().close()
+    } catch (err) {
+      console.error("quit failed", err)
+    }
+  }, [])
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          onClick={() => void handleQuit()}
+          tooltip="Quit"
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <PowerIcon />
+          <span>Quit</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }

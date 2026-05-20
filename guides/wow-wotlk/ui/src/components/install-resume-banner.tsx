@@ -1,4 +1,3 @@
-import * as React from "react"
 import { ArrowRightIcon, WarningCircleIcon } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"

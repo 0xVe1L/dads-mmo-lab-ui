@@ -20,6 +20,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { PreInstallTooltip } from "@/components/pre-install-tooltip"
 import {
   useServerState,
   type GameCharacter,
@@ -45,38 +46,41 @@ import { cn } from "@/lib/utils"
 
 export function GlobalCharacterCard() {
   const [open, setOpen] = React.useState(false)
-  const { selectedCharacter } = useServerState()
+  const { selectedCharacter, installed } = useServerState()
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton
-          size="lg"
-          onClick={() => setOpen(true)}
-          className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-          tooltip={
-            selectedCharacter
-              ? selectedCharacter.name
-              : "Select a character…"
-          }
-        >
-          <CharacterAvatar character={selectedCharacter} />
-          <div className="grid flex-1 text-left text-sm leading-tight">
-            {selectedCharacter ? (
-              <>
-                <span className="truncate font-medium">
-                  {selectedCharacter.name}
+        <PreInstallTooltip show={!installed}>
+          <SidebarMenuButton
+            size="lg"
+            onClick={() => setOpen(true)}
+            disabled={!installed}
+            className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            tooltip={
+              selectedCharacter
+                ? selectedCharacter.name
+                : "Select a character…"
+            }
+          >
+            <CharacterAvatar character={selectedCharacter} />
+            <div className="grid flex-1 text-left text-base leading-tight">
+              {selectedCharacter ? (
+                <>
+                  <span className="truncate font-medium">
+                    {selectedCharacter.name}
+                  </span>
+                  <CharacterDetail character={selectedCharacter} />
+                </>
+              ) : (
+                <span className="truncate text-muted-foreground">
+                  Select a character…
                 </span>
-                <CharacterDetail character={selectedCharacter} />
-              </>
-            ) : (
-              <span className="truncate text-muted-foreground">
-                Select a character…
-              </span>
-            )}
-          </div>
-          <DotsThreeVerticalIcon className="ml-auto size-4" />
-        </SidebarMenuButton>
+              )}
+            </div>
+            <DotsThreeVerticalIcon className="ml-auto size-5" />
+          </SidebarMenuButton>
+        </PreInstallTooltip>
       </SidebarMenuItem>
       <CharacterSelectionDialog open={open} onOpenChange={setOpen} />
     </SidebarMenu>
@@ -99,12 +103,12 @@ function CharacterAvatar({
   return (
     <Avatar
       className={cn(
-        "h-8 w-8 rounded-lg ring-2 ring-transparent",
+        "h-10 w-10 rounded-lg ring-2 ring-transparent",
         ring && ring.replace("text-", "ring-")
       )}
     >
       <AvatarFallback className="rounded-lg bg-muted">
-        <UserCircleIcon className="size-5 text-muted-foreground" />
+        <UserCircleIcon className="size-6 text-muted-foreground" />
       </AvatarFallback>
     </Avatar>
   )
@@ -115,7 +119,7 @@ function CharacterDetail({ character }: { character: GameCharacter }) {
   const klass = CLASS_NAMES[character.class] ?? `Class ${character.class}`
   const klassColor = CLASS_COLORS[character.class] ?? "text-foreground"
   return (
-    <span className="truncate text-xs text-muted-foreground">
+    <span className="truncate text-sm text-muted-foreground">
       Lvl {character.level} | {race}{" "}
       <span className={cn("font-medium", klassColor)}>{klass}</span>
     </span>

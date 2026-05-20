@@ -19,6 +19,11 @@
 #    DML_FORCE          "1" to wipe an existing install at the target
 #                       directory; otherwise the script aborts if the
 #                       directory already exists.
+#    DML_DEV_CONTAINER  "1" to force the dev-container Docker path — use the
+#                       host's daemon via the mounted socket instead of
+#                       installing+starting one. Auto-detected for distrobox/
+#                       toolbox/podman, so it's rarely set by hand, and never
+#                       triggers on a real SteamOS host.
 #
 #  Differences from install-wow.sh:
 #    - No `read` prompts, no `clear`. The script runs straight through.
@@ -311,10 +316,72 @@ check_system() {
 # ─────────────────────────────────────────
 # INSTALL DOCKER (non-interactive)
 # ─────────────────────────────────────────
+
+# Detect a dev container (distrobox / toolbox / podman). These have no
+# systemd to start a docker daemon, but distrobox mounts the host's docker
+# socket — so we drive the host daemon with just the CLI instead of
+# installing and starting one. Never true on a real SteamOS host, so the
+# normal install path below is untouched. DML_DEV_CONTAINER=1 forces it if
+# auto-detection ever misses.
+running_in_container() {
+    [ -n "${DML_DEV_CONTAINER:-}" ] && return 0
+    [ -f /run/.containerenv ] && return 0
+    [ -f /run/.toolboxenv ] && return 0
+    [ -n "${container:-}" ] && return 0
+    return 1
+}
+
+# acore-docker's compile builds use `RUN --mount`, which needs BuildKit.
+# Docker can be present WITHOUT the buildx plugin (Arch ships it as a
+# separate `docker-buildx` package), so verify it independently of docker
+# itself — otherwise the compile dies with "the --mount option requires
+# BuildKit" and produces no worldserver image. Idempotent: no-op if present.
+ensure_buildx() {
+    if docker buildx version &>/dev/null; then
+        return 0
+    fi
+    print_info "Installing Docker BuildKit (buildx)..."
+    if command -v pacman &>/dev/null; then
+        sudo -n pacman -S --noconfirm --needed docker-buildx >/dev/null 2>&1 || true
+    elif command -v apt-get &>/dev/null; then
+        sudo -n apt-get install -y docker-buildx >/dev/null 2>&1 || true
+    fi
+    if ! docker buildx version &>/dev/null; then
+        print_warning "Could not confirm Docker BuildKit (buildx) — compile builds may fail."
+        print_info  "Install it manually and retry: sudo pacman -S docker-buildx"
+    fi
+}
+
 install_docker() {
     if command -v docker &>/dev/null && docker ps &>/dev/null 2>&1; then
         print_success "Docker already installed and running"
+        ensure_buildx
         return 0
+    fi
+
+    # Dev container: use the host's daemon via the mounted socket. There's no
+    # systemd here, so we never start a daemon — just make sure the CLI exists
+    # and that `docker ps` reaches the host. Gated on running_in_container() so
+    # a real SteamOS host skips straight to the normal install below.
+    if running_in_container; then
+        print_info "Dev container detected — using the host's Docker daemon (none started here)."
+        # docker-buildx is REQUIRED: acore-docker's Dockerfile uses
+        # `RUN --mount=type=cache/bind`, which only works under BuildKit.
+        # Arch's `docker` package does NOT bundle buildx — without it the
+        # compile step fails with "the --mount option requires BuildKit"
+        # and the build silently produces no worldserver image.
+        if command -v pacman &>/dev/null; then
+            sudo -n pacman -S --noconfirm --needed docker docker-compose docker-buildx >/dev/null 2>&1 || true
+        elif command -v apt-get &>/dev/null; then
+            sudo -n apt-get install -y docker.io docker-compose docker-buildx >/dev/null 2>&1 || true
+        fi
+        if command -v docker &>/dev/null && docker ps &>/dev/null 2>&1; then
+            print_success "Docker CLI present; reaching host daemon via mounted socket"
+            return 0
+        fi
+        print_error "In a dev container but Docker isn't reachable."
+        print_info  "Install the CLI in the container (sudo pacman -S docker docker-compose) and confirm the host socket is mounted at /run/host/run/docker.sock."
+        exit 1
     fi
 
     print_info "Installing Docker..."
@@ -334,7 +401,11 @@ install_docker() {
             print_info  "Run install-wow.sh from Konsole — it handles the keyring reset interactively."
             exit 1
         fi
-        if ! sudo -n pacman -S --noconfirm docker docker-compose; then
+        # docker-buildx provides BuildKit. acore-docker's Dockerfile uses
+        # `RUN --mount=type=cache/bind`, which only works under BuildKit —
+        # without it, compile builds die with "the --mount option requires
+        # BuildKit" and produce no worldserver image.
+        if ! sudo -n pacman -S --noconfirm docker docker-compose docker-buildx; then
             print_error "Failed to install Docker via pacman."
             exit 1
         fi
@@ -344,6 +415,9 @@ install_docker() {
             print_error "Failed to install Docker via apt-get."
             exit 1
         fi
+        # BuildKit (see note above). Best-effort: the package name varies
+        # across Debian/Ubuntu releases, so don't fail the install over it.
+        sudo -n apt-get install -y docker-buildx >/dev/null 2>&1 || true
     else
         print_error "No supported package manager found (need pacman or apt-get)."
         exit 1
@@ -544,12 +618,12 @@ services:
 OVERRIDE
 
                 cd "$SERVER_DIR" || exit 1
-                section_start "Docker build — NPCBots (collapsed; expand to follow live)"
-                if ! docker compose up -d --build 2>&1 | tee "$HOME/npcbots-build.log"; then
-                    :
-                fi
+                section_start "Docker build — NPCBots"
+                docker compose up -d --build 2>&1 | tee "$HOME/npcbots-build.log"
+                # Capture exit code NOW — section_end would clobber $PIPESTATUS.
+                BUILD_RC=${PIPESTATUS[0]}
                 section_end
-                if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                if [ "$BUILD_RC" -ne 0 ]; then
                     print_error "Compilation failed. See ~/npcbots-build.log"
                     exit 1
                 fi
@@ -580,6 +654,12 @@ services:
     build:
       context: .
       target: worldserver
+      args:
+        # This is a non-developer install — turn OFF AzerothCore's
+        # -Wall/-Wextra warning flood (thousands of compiler warnings that
+        # alarm users for no reason). Documented acore-docker knob; defaults
+        # to "ON". Flip back to "ON" for development builds.
+        CWITH_WARNINGS: "OFF"
     volumes:
       - ./modules:/azerothcore/modules
     environment:
@@ -618,12 +698,13 @@ OVERRIDE
 
             print_info "Compiling Playerbots (2-4 hours)..."
             cd "$SERVER_DIR" || exit 1
-            section_start "Docker build — Playerbots (collapsed; expand to follow live)"
-            if ! docker compose up -d --build 2>&1 | tee "$HOME/playerbots-build.log"; then
-                :
-            fi
+            section_start "Docker build — Playerbots"
+            docker compose up -d --build 2>&1 | tee "$HOME/playerbots-build.log"
+            # Capture the compose exit code NOW — section_end runs a command
+            # and would clobber $PIPESTATUS before we could read it.
+            BUILD_RC=${PIPESTATUS[0]}
             section_end
-            if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            if [ "$BUILD_RC" -ne 0 ]; then
                 print_error "Compilation failed. See ~/playerbots-build.log"
                 exit 1
             fi
@@ -637,6 +718,10 @@ OVERRIDE
 # ─────────────────────────────────────────
 wait_for_server() {
     print_step "Waiting for worldserver"
+
+    print_info "First start imports the full world database into MySQL. On a"
+    print_info "Steam Deck this can take 10-30+ minutes — it's normal, not stuck."
+    print_info "Every start after this one is much faster (no re-import)."
 
     TIMEOUT=1800
     ELAPSED=0
@@ -911,6 +996,15 @@ if [ "${DML_RESUME:-0}" = "1" ]; then
 else
     check_system
     install_server
+    # A successful build+up always leaves a worldserver container. If none
+    # exists, the image build silently failed (most often BuildKit/
+    # docker-buildx missing) — abort now instead of waiting out the timeout
+    # and then falsely writing install.json as if the server were ready.
+    if ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qi worldserver; then
+        print_error "Install produced no worldserver container — the Docker image build failed."
+        print_info  "Most common cause: Docker BuildKit unavailable. Make sure 'docker-buildx' is installed, then retry. See ~/playerbots-build.log or ~/npcbots-build.log."
+        exit 1
+    fi
     wait_for_server
     bootstrap_accounts_and_ahbot
     write_metadata

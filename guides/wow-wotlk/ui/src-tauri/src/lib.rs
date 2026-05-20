@@ -3,6 +3,7 @@ use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
 
 mod app_settings;
+mod bootstrap;
 mod client_assets;
 mod controller;
 mod dashboard;
@@ -76,6 +77,7 @@ pub fn run() {
         .manage(server::ServerControlState::default())
         .invoke_handler(tauri::generate_handler![
             greet,
+            bootstrap::bootstrap_privileges,
             install::detect_installs,
             install::start_install,
             install::cancel_install,
