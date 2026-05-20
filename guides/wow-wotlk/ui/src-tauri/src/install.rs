@@ -201,10 +201,12 @@ pub fn detect_installs() -> Result<DetectionResult, String> {
     Ok(DetectionResult { installs })
 }
 
-/// Resolve the install-wow-ui.sh script. In dev we walk up from the running
-/// binary until we find it. An explicit override via $DML_INSTALL_SCRIPT
-/// wins for testing.
-fn resolve_install_script() -> Result<PathBuf, String> {
+/// Resolve the install-wow-ui.sh script. Resolution order:
+/// 1. `$DML_INSTALL_SCRIPT` override (testing).
+/// 2. The Tauri resource dir — this is where the script lands in a bundled
+///    app (AppImage / installed), declared via `bundle.resources`.
+/// 3. Walk up from the running binary — the in-repo dev case.
+fn resolve_install_script(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(override_path) = std::env::var("DML_INSTALL_SCRIPT") {
         let p = PathBuf::from(override_path);
         if p.exists() {
@@ -214,6 +216,13 @@ fn resolve_install_script() -> Result<PathBuf, String> {
             "DML_INSTALL_SCRIPT set but does not exist: {}",
             p.display()
         ));
+    }
+
+    if let Ok(dir) = app.path().resource_dir() {
+        let candidate = dir.join("install-wow-ui.sh");
+        if candidate.exists() {
+            return Ok(candidate);
+        }
     }
 
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
@@ -226,7 +235,7 @@ fn resolve_install_script() -> Result<PathBuf, String> {
         cursor = dir.parent();
     }
     Err(format!(
-        "install-wow-ui.sh not found walking up from {}",
+        "install-wow-ui.sh not found (checked resource dir + walked up from {})",
         exe.display()
     ))
 }
@@ -247,7 +256,7 @@ pub async fn start_install(
         }
     }
 
-    let script = resolve_install_script()?;
+    let script = resolve_install_script(&app)?;
 
     let mut cmd = Command::new("bash");
     cmd.arg(&script)

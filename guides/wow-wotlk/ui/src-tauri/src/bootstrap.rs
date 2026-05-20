@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use serde::Serialize;
+use tauri::{AppHandle, Manager};
 use tokio::process::Command;
 
 #[derive(Serialize)]
@@ -29,15 +30,22 @@ pub struct BootstrapResult {
     pub message: String,
 }
 
-/// Walk up from the running binary to find `dml-bootstrap.sh` (same strategy
-/// as `resolve_install_script`). `$DML_BOOTSTRAP_SCRIPT` overrides for tests.
-fn resolve_bootstrap_script() -> Result<PathBuf, String> {
+/// Resolve `dml-bootstrap.sh` (same strategy as `resolve_install_script`):
+/// `$DML_BOOTSTRAP_SCRIPT` override → Tauri resource dir (bundled app) →
+/// walk up from the binary (in-repo dev).
+fn resolve_bootstrap_script(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(p) = std::env::var("DML_BOOTSTRAP_SCRIPT") {
         let p = PathBuf::from(p);
         if p.exists() {
             return Ok(p);
         }
         return Err(format!("DML_BOOTSTRAP_SCRIPT set but missing: {}", p.display()));
+    }
+    if let Ok(dir) = app.path().resource_dir() {
+        let candidate = dir.join("dml-bootstrap.sh");
+        if candidate.exists() {
+            return Ok(candidate);
+        }
     }
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let mut cursor: Option<&Path> = exe.parent();
@@ -49,7 +57,7 @@ fn resolve_bootstrap_script() -> Result<PathBuf, String> {
         cursor = dir.parent();
     }
     Err(format!(
-        "dml-bootstrap.sh not found walking up from {}",
+        "dml-bootstrap.sh not found (checked resource dir + walked up from {})",
         exe.display()
     ))
 }
@@ -86,7 +94,7 @@ fn passwordless_sudo() -> bool {
 ///    installer can configure Docker itself via `sudo -n`; no GUI prompt.
 /// 3. Otherwise → run `dml-bootstrap.sh` as root via `pkexec`.
 #[tauri::command]
-pub async fn bootstrap_privileges() -> Result<BootstrapResult, String> {
+pub async fn bootstrap_privileges(app: AppHandle) -> Result<BootstrapResult, String> {
     if docker_ready() && buildx_present() {
         return Ok(BootstrapResult {
             needed: false,
@@ -109,13 +117,24 @@ pub async fn bootstrap_privileges() -> Result<BootstrapResult, String> {
             .into());
     }
 
-    let script = resolve_bootstrap_script()?;
-    let output = Command::new("pkexec")
-        .arg("bash")
-        .arg(&script)
-        .output()
-        .await
-        .map_err(|e| format!("failed to launch pkexec: {e}"))?;
+    let script = resolve_bootstrap_script(&app)?;
+    // An AppImage runs from a FUSE mount that root (via pkexec) can't read,
+    // so we can't hand pkexec the resolved path directly. Read the script as
+    // ourselves (we *can* read the mount) and stage it in a plain temp file —
+    // 0600, owner-only — that the elevated process can read.
+    let contents = std::fs::read(&script)
+        .map_err(|e| format!("read bootstrap script {}: {e}", script.display()))?;
+    let tmp = std::env::temp_dir().join(format!("dml-bootstrap-{}.sh", std::process::id()));
+    std::fs::write(&tmp, &contents).map_err(|e| format!("stage bootstrap script: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
+
+    let result = Command::new("pkexec").arg("bash").arg(&tmp).output().await;
+    let _ = std::fs::remove_file(&tmp);
+    let output = result.map_err(|e| format!("failed to launch pkexec: {e}"))?;
 
     if output.status.success() {
         return Ok(BootstrapResult {
