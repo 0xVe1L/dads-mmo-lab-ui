@@ -2,6 +2,7 @@ import * as React from "react"
 import { listen } from "@tauri-apps/api/event"
 
 import { trackedInvoke, isTauri } from "@/lib/tauri"
+import { playSfx } from "@/lib/sfx"
 
 export type InstallVariant = "base" | "npcbots" | "playerbots"
 
@@ -852,6 +853,7 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
           ? "succeeded"
           : "failed"
       setInstallStatus(nextStatus)
+      if (nextStatus === "succeeded") playSfx("questComplete")
       const msg = e.payload.cancelled
         ? "Installer cancelled."
         : e.payload.success
@@ -913,6 +915,7 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
         setServerConsoleState((prev) =>
           applyFinal(prev, "highlight", "AZEROTH IS READY! ⚔️", nextId)
         )
+        playSfx("levelUp")
       }
       setServerActionStatus(e.payload.success ? "succeeded" : "failed")
       // Always re-check status — even a failed action may have changed
@@ -948,6 +951,7 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       setConsoleState(EMPTY_CONSOLE_STATE)
       setInstallExitCode(null)
       setInstallStatus("running")
+      playSfx("questActivate")
 
       // One-time privileged setup (Docker + BuildKit). Pops a single
       // PolicyKit password prompt only when needed — a no-op if Docker is

@@ -6,6 +6,7 @@ import {
   GearIcon,
   GlobeIcon,
   WarningCircleIcon,
+  XIcon,
 } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
@@ -98,6 +99,50 @@ export function WowClientCard() {
     }
   }, [])
 
+  // ── "Client connected" dismissal ─────────────────────────────────
+  // Only the all-good confirmation is dismissable; the amber/rose
+  // action prompts always show. Both dismissals are keyed by the client
+  // directory, so changing the install dir resurfaces the notice.
+  //   - X      → dismiss for this session (sessionStorage, cleared on
+  //              app restart)
+  //   - Forever → persisted in settings via the notice plumbing
+  const directory = state?.directory ?? null
+  const noticeId = directory ? `client-connected:${directory}` : null
+  const [sessionDismissed, setSessionDismissed] = React.useState(false)
+  const [foreverDismissed, setForeverDismissed] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!noticeId) {
+      setSessionDismissed(false)
+      return
+    }
+    setSessionDismissed(sessionStorage.getItem(noticeId) === "1")
+  }, [noticeId])
+
+  React.useEffect(() => {
+    if (!noticeId || !isTauri()) {
+      setForeverDismissed(false)
+      return
+    }
+    void trackedInvoke<boolean>("is_notice_dismissed", { noticeId })
+      .then(setForeverDismissed)
+      .catch(() => setForeverDismissed(false))
+  }, [noticeId])
+
+  const dismissSession = React.useCallback(() => {
+    if (noticeId) sessionStorage.setItem(noticeId, "1")
+    setSessionDismissed(true)
+  }, [noticeId])
+
+  const dismissForever = React.useCallback(() => {
+    setForeverDismissed(true)
+    if (noticeId && isTauri()) {
+      void trackedInvoke("dismiss_notice", { noticeId }).catch((e) =>
+        console.warn("dismiss_notice failed", e)
+      )
+    }
+  }, [noticeId])
+
   // While the initial fetch is in flight, render nothing — avoids a
   // jarring "Select your WoW client" flash before settings load.
   if (state === null) return null
@@ -181,28 +226,49 @@ export function WowClientCard() {
   }
 
   // Directory set + realmlist correct → small confirmation strip.
-  // Intentionally NOT dismissable — earlier versions had an X here that
-  // routed to handleClear (= forget client), which read as "dismiss
-  // notification" and silently disconnected. Disconnect now lives in
-  // Settings → WoW client.
+  // Dismissable (X = this session, "Dismiss forever" = persisted). Note
+  // dismissal is NOT disconnecting — that still lives in Settings → WoW
+  // client. Once dismissed, this all-good state shows nothing, but the
+  // amber/rose action prompts above always return.
+  if (sessionDismissed || foreverDismissed) return null
   return (
-    <CardShell tone="emerald">
-      <CheckCircleIcon className="mt-0.5 size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-      <div className="flex-1 space-y-1">
-        <div className="text-sm font-medium leading-tight">
-          WoW client connected — realmlist points at <span className="font-mono">127.0.0.1</span>
-        </div>
-        <div className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
-          <span className="font-mono">{state.directory}</span>
-          {state.locale && (
-            <span className="text-emerald-600/70 dark:text-emerald-400/70">
-              {" "}
-              · locale {state.locale}
-            </span>
-          )}
+    <div className="relative rounded-md border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-800 dark:text-emerald-200">
+      <button
+        type="button"
+        onClick={dismissSession}
+        aria-label="Dismiss until next launch"
+        title="Dismiss until next launch"
+        className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-sm text-emerald-700/70 transition-colors hover:bg-emerald-500/15 hover:text-emerald-800 dark:text-emerald-300/70 dark:hover:text-emerald-200"
+      >
+        <XIcon className="size-4" />
+      </button>
+      <div className="flex items-start gap-3 pr-6">
+        <CheckCircleIcon className="mt-0.5 size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <div className="flex-1 space-y-1">
+          <div className="text-sm font-medium leading-tight">
+            WoW client connected — realmlist points at <span className="font-mono">127.0.0.1</span>
+          </div>
+          <div className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
+            <span className="font-mono">{state.directory}</span>
+            {state.locale && (
+              <span className="text-emerald-600/70 dark:text-emerald-400/70">
+                {" "}
+                · locale {state.locale}
+              </span>
+            )}
+          </div>
         </div>
       </div>
-    </CardShell>
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          onClick={dismissForever}
+          className="text-xs text-emerald-700/70 transition-colors hover:text-emerald-800 dark:text-emerald-300/70 dark:hover:text-emerald-200"
+        >
+          Dismiss forever
+        </button>
+      </div>
+    </div>
   )
 }
 

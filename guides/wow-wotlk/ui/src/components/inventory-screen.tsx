@@ -252,7 +252,7 @@ export function InventoryScreen() {
   }
 
   return (
-    <div className="grid h-[calc(100svh-var(--header-height))] grid-rows-[auto_minmax(0,1fr)] gap-4 p-6">
+    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-4 p-6">
       <header className="space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 space-y-1">

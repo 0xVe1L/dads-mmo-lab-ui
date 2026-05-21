@@ -22,6 +22,7 @@ import { ItemIconFramed } from "@/components/item-icon-framed"
 import { ItemTooltip } from "@/components/item-tooltip"
 import { useServerState } from "@/components/server-state-context"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
+import { CLASS_ICONS } from "@/lib/class-icons"
 import {
   CLASS_COLOR_HEX,
   CLASS_COLORS,
@@ -147,7 +148,7 @@ export function DashboardPlayerView() {
   }
 
   return (
-    <div className="flex-1 space-y-6 p-6">
+    <div className="flex-1 space-y-3 p-4">
       <CharacterStatusHeader
         data={data}
         loading={loading && !data}
@@ -192,11 +193,11 @@ function CharacterStatusHeader({
   onRefresh: () => void
 }) {
   if (loading) {
-    return <div className="h-32 animate-pulse rounded-md border border-border bg-muted/20" />
+    return <div className="mx-auto h-32 w-full max-w-3xl animate-pulse rounded-md border border-border bg-muted/20" />
   }
   if (error || !data) {
     return (
-      <div className="flex items-start gap-3 rounded-md border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-700 dark:text-rose-300">
+      <div className="mx-auto flex w-full max-w-3xl items-start gap-3 rounded-md border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-700 dark:text-rose-300">
         <WarningCircleIcon className="mt-0.5 size-4 shrink-0" />
         <div className="flex-1">
           <div className="font-medium">Couldn't load character data</div>
@@ -216,14 +217,18 @@ function CharacterStatusHeader({
   const dead = data.health === 0
 
   return (
-    <div className="rounded-md border border-border bg-card p-4">
-      <div className="flex items-start gap-4">
-        {/* Class-color-ringed avatar placeholder — same component
-            family as the sidebar GlobalCharacterCard. Real avatars are
-            a future-work item if/when we extract race/class portraits
-            from the client. */}
+    // Same width as the equipment card below so the two panels line up.
+    <div className="mx-auto w-full max-w-3xl rounded-md border border-border bg-card p-4">
+      {/* items-center vertically centers the avatar against the whole
+          name+bars block. */}
+      <div className="flex items-center gap-4">
+        {/* Class crest avatar with the class-color ring. The crest is a
+            bundled image (see lib/class-icons); falls back to the generic
+            icon if a class has no mapped crest. The image is scaled up
+            slightly + overflow-clipped so the crest's own dark frame is
+            cropped and the symbol sits evenly inside our ring. */}
         <div
-          className="flex size-14 shrink-0 items-center justify-center rounded-md ring-2"
+          className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md ring-2"
           style={{
             backgroundColor: "rgba(0,0,0,0.3)",
             color: CLASS_COLOR_HEX[data.class] ?? "#aaa",
@@ -232,33 +237,62 @@ function CharacterStatusHeader({
             boxShadow: `inset 0 0 0 2px ${CLASS_COLOR_HEX[data.class] ?? "#666"}`,
           }}
         >
-          <UserCircleIcon className="size-9" />
+          {CLASS_ICONS[data.class] ? (
+            <img
+              src={CLASS_ICONS[data.class]}
+              alt={className}
+              className="size-full scale-110 object-cover"
+            />
+          ) : (
+            <UserCircleIcon className="size-10" />
+          )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className={cn("text-lg font-semibold leading-tight", classColor)}>
-              {data.name}
-            </span>
-            {dead && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-600">
-                <SkullIcon className="size-3" />
-                Dead
-              </span>
-            )}
-            {data.online && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
-                <span className="size-1.5 rounded-full bg-emerald-500" />
-                Online
-              </span>
-            )}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Level {data.level} | {raceName}{" "}
-            <span className={cn("font-medium", classColor)}>{className}</span>
+          {/* Two mirrored columns: name over level/class on the left, and
+              on the right the refresh icon (top corner) over the gold —
+              the right column stretches to the left block's height so the
+              gold's bottom lines up with the level/class line. */}
+          <div className="flex justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className={cn("text-lg font-semibold leading-tight", classColor)}>
+                  {data.name}
+                </span>
+                {dead && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-600">
+                    <SkullIcon className="size-3" />
+                    Dead
+                  </span>
+                )}
+                {data.online && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
+                    <span className="size-1.5 rounded-full bg-emerald-500" />
+                    Online
+                  </span>
+                )}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Level {data.level} | {raceName}{" "}
+                <span className={cn("font-medium", classColor)}>{className}</span>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col items-end justify-between">
+              <button
+                type="button"
+                onClick={onRefresh}
+                aria-label="Refresh character data"
+                title="Refresh"
+                className="text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowClockwiseIcon className={cn("size-4", loading && "animate-spin")} />
+              </button>
+              <MoneyDisplay data={data} onChanged={onRefresh} />
+            </div>
           </div>
 
           {/* HP + Resource bars, side by side. */}
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <HpBar data={data} onChanged={onRefresh} />
             <ResourceBar
               data={data}
@@ -266,19 +300,6 @@ function CharacterStatusHeader({
               onChanged={onRefresh}
             />
           </div>
-        </div>
-
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onRefresh}
-            aria-label="Refresh character data"
-          >
-            <ArrowClockwiseIcon className={cn("size-4", loading && "animate-spin")} />
-            Refresh
-          </Button>
-          <MoneyDisplay data={data} onChanged={onRefresh} />
         </div>
       </div>
 
@@ -724,10 +745,12 @@ function Paperdoll({
   }, [data])
 
   return (
-    <div className="rounded-md border border-border bg-card p-6">
-      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-6 gap-y-3">
+    // Card is narrowed + centered so the gear columns sit close to the
+    // portrait instead of hugging the window edges with dead space.
+    <div className="mx-auto w-full max-w-3xl rounded-md border border-border bg-card p-3">
+      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-6 gap-y-2">
         {/* Left column */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {LEFT_SLOTS.map((slot) => (
             <PaperdollSlot
               key={slot}
@@ -738,9 +761,10 @@ function Paperdoll({
           ))}
         </div>
 
-        {/* Middle — character portrait placeholder. Future: 3D model
-            viewer or extracted paperdoll background art. */}
-        <div className="flex h-full min-h-[400px] items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-muted-foreground">
+        {/* Middle — character portrait placeholder. self-stretch matches
+            the gear-column height so there's no dead space above/below.
+            Future: 3D model viewer or extracted paperdoll background art. */}
+        <div className="flex h-full min-h-[220px] items-center justify-center self-stretch rounded-md border border-dashed border-border bg-muted/20 text-muted-foreground">
           <div className="space-y-2 text-center">
             <UserCircleIcon className="mx-auto size-20" />
             <div className="text-xs">
@@ -756,7 +780,7 @@ function Paperdoll({
         </div>
 
         {/* Right column */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {RIGHT_SLOTS.map((slot) => (
             <PaperdollSlot
               key={slot}
@@ -769,7 +793,7 @@ function Paperdoll({
 
         {/* Bottom row — weapons. Spans the full width below the
             three-column layout, centered. */}
-        <div className="col-span-3 flex justify-center gap-3 pt-2">
+        <div className="col-span-3 flex justify-center gap-2 pt-1">
           {BOTTOM_SLOTS.map((slot) => (
             <PaperdollSlot
               key={slot}
@@ -801,7 +825,7 @@ function PaperdollSlot({
     // enrichment for those lands.
     return (
       <div
-        className="flex size-14 shrink-0 items-center justify-center rounded-[3px] border border-black/80 bg-zinc-950/60 px-1 text-center text-[9px] uppercase leading-tight tracking-wide text-muted-foreground/60"
+        className="flex size-12 shrink-0 items-center justify-center rounded-[3px] border border-black/80 bg-zinc-950/60 px-1 text-center text-[8px] uppercase leading-tight tracking-wide text-muted-foreground/60"
         title={slotLabel}
       >
         {slotLabel}
@@ -822,6 +846,7 @@ function PaperdollSlot({
           entry={item.entry}
           quality={item.quality}
           size="large"
+          className="size-12"
           alt={slotLabel}
         />
       </span>

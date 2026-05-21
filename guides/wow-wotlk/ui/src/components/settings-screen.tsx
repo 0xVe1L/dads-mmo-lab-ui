@@ -9,6 +9,7 @@ import {
   MagicWandIcon,
   PlugsIcon,
   ScrollIcon,
+  SlidersIcon,
   SparkleIcon,
   TrashIcon,
   WarningCircleIcon,
@@ -17,8 +18,11 @@ import { listen } from "@tauri-apps/api/event"
 import { open as openDialog } from "@tauri-apps/plugin-dialog"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Slider } from "@/components/ui/slider"
 import { ControllerSupportSection } from "@/components/controller-support-section"
 import { useServerState } from "@/components/server-state-context"
+import { useSfx } from "@/lib/sfx"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
 import { cn } from "@/lib/utils"
 
@@ -258,7 +262,7 @@ export function SettingsScreen() {
   }
 
   return (
-    <div className="grid h-[calc(100svh-var(--header-height))] grid-rows-[auto_minmax(0,1fr)] gap-4 p-6">
+    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-4 p-6">
       <header className="space-y-1">
         <h1 className="flex items-center gap-2 font-heading text-2xl font-semibold leading-tight">
           <GearIcon className="size-6 shrink-0 text-muted-foreground" />
@@ -272,6 +276,14 @@ export function SettingsScreen() {
       </header>
 
       <div className="min-h-0 space-y-6 overflow-y-auto pr-1 pb-3">
+        <Section
+          icon={<SlidersIcon className="size-5 text-muted-foreground" />}
+          title="Audio"
+          subtitle="Sound effects for installs, server start, and quitting. Mute anytime from the speaker icon in the top bar."
+        >
+          <AudioSettings />
+        </Section>
+
         <Section
           title="Data enrichment"
           subtitle="Pull metadata out of your WoW client so the Inventory, Teleport, and (eventually) Spellbook pages show real icons, tooltips, and descriptions instead of raw IDs."
@@ -384,22 +396,66 @@ export function SettingsScreen() {
 function Section({
   title,
   subtitle,
+  icon,
   children,
 }: {
   title: string
   subtitle?: string
+  icon?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <section className="space-y-3">
       <div className="space-y-1">
-        <h2 className="text-base font-semibold leading-tight">{title}</h2>
+        <h2 className="flex items-center gap-2 text-base font-semibold leading-tight">
+          {icon}
+          {title}
+        </h2>
         {subtitle && (
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         )}
       </div>
       <div className="space-y-3">{children}</div>
     </section>
+  )
+}
+
+/** Audio prefs — shared with the title-bar mute toggle via the sfx store. */
+function AudioSettings() {
+  const { enabled, volume, setEnabled, setVolume } = useSfx()
+  return (
+    <div className="space-y-4 rounded-md border border-border bg-card p-4">
+      <label className="flex cursor-pointer items-center gap-2">
+        <Checkbox
+          checked={enabled}
+          onCheckedChange={(v) => setEnabled(v === true)}
+        />
+        <span className="text-sm font-medium">Enable SFX</span>
+      </label>
+      <div
+        className={cn(
+          "space-y-2",
+          !enabled && "pointer-events-none opacity-50"
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Volume
+          </span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {volume}%
+          </span>
+        </div>
+        <Slider
+          value={[volume]}
+          max={100}
+          step={1}
+          aria-label="SFX volume"
+          onValueChange={(v) => setVolume(v[0] ?? 0)}
+          className="w-full"
+        />
+      </div>
+    </div>
   )
 }
 

@@ -229,20 +229,25 @@ function NavGroup({
               const isActive = sub.page != null && activePage === sub.page
               return (
                 <SidebarMenuSubItem key={sub.title}>
-                  <SidebarMenuSubButton
-                    isActive={isActive}
-                    aria-disabled={disabled}
-                    className={cn(
-                      "cursor-pointer",
-                      disabled && "cursor-default opacity-50"
-                    )}
-                    onClick={() => {
-                      if (!sub.disabled && sub.page) setActivePage(sub.page)
-                    }}
-                  >
-                    {sub.icon}
-                    <span>{sub.title}</span>
-                  </SidebarMenuSubButton>
+                  {/* Intrinsically-disabled stubs (Gear Library, Auction
+                      House, etc.) explain themselves on hover, mirroring
+                      the pre-install tooltip pattern. */}
+                  <PreInstallTooltip show={!!sub.disabled} label="Coming Soon!">
+                    <SidebarMenuSubButton
+                      isActive={isActive}
+                      aria-disabled={disabled}
+                      className={cn(
+                        "cursor-pointer",
+                        disabled && "cursor-default opacity-50"
+                      )}
+                      onClick={() => {
+                        if (!sub.disabled && sub.page) setActivePage(sub.page)
+                      }}
+                    >
+                      {sub.icon}
+                      <span>{sub.title}</span>
+                    </SidebarMenuSubButton>
+                  </PreInstallTooltip>
                 </SidebarMenuSubItem>
               )
             })}

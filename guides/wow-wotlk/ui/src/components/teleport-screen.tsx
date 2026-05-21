@@ -193,8 +193,30 @@ export function TeleportScreen() {
       .filter((l): l is TeleportLocation => l != null)
   }, [favorites, locations])
 
+  // Lazy render: mount a page of tiles and grow as the user scrolls near
+  // the bottom. A continent can have 400+ locations; rendering them all
+  // at once was janky and pushed the last rows past the viewport.
+  const PAGE_SIZE = 60
+  const [shown, setShown] = React.useState(PAGE_SIZE)
+  React.useEffect(() => {
+    setShown(PAGE_SIZE)
+  }, [activeContinent, search, locations])
+  const paged = React.useMemo(() => visible.slice(0, shown), [visible, shown])
+  const onListScroll = React.useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget
+      if (
+        el.scrollHeight - el.scrollTop - el.clientHeight < 320 &&
+        shown < visible.length
+      ) {
+        setShown((n) => Math.min(n + PAGE_SIZE, visible.length))
+      }
+    },
+    [shown, visible.length]
+  )
+
   return (
-    <div className="grid h-[calc(100svh-var(--header-height))] grid-rows-[auto_minmax(0,1fr)_auto] gap-4 p-6">
+    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-4 p-6">
       <header className="space-y-3">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
@@ -234,9 +256,10 @@ export function TeleportScreen() {
           />
           <CustomCoordsForm onTeleport={teleToCoords} busy={busy} />
         </div>
-      </header>
 
-      <div className="min-h-0 space-y-3 overflow-hidden">
+        {/* Continent tabs + search stay in the (non-scrolling) header so
+            they're effectively sticky while the location grid below
+            scrolls — same layout hierarchy as the Item Database page. */}
         <ContinentTabs
           active={activeContinent}
           onChange={setActiveContinent}
@@ -252,29 +275,38 @@ export function TeleportScreen() {
             className="pl-9"
           />
         </div>
+      </header>
 
-        <div className="min-h-0 overflow-y-auto pr-1">
-          {loadError ? (
+      {/* The grid-row itself is the scroll container (bounded by the
+          minmax(0,1fr) track) — no nested overflow wrapper. */}
+      <div className="min-h-0 overflow-y-auto pr-1 pb-3" onScroll={onListScroll}>
+        {loadError ? (
             <ErrorPanel message={loadError} onRetry={refresh} />
           ) : loading && locations.length === 0 ? (
             <SkeletonGrid />
           ) : visible.length === 0 ? (
             <EmptyZone />
           ) : (
-            <div className="grid grid-cols-1 gap-2 pb-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {visible.map((loc) => (
-                <LocationTile
-                  key={loc.id}
-                  loc={loc}
-                  isFavorite={favorites.includes(loc.id)}
-                  onTeleport={tele}
-                  onToggleFavorite={toggleFavorite}
-                  busy={busy}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {paged.map((loc) => (
+                  <LocationTile
+                    key={loc.id}
+                    loc={loc}
+                    isFavorite={favorites.includes(loc.id)}
+                    onTeleport={tele}
+                    onToggleFavorite={toggleFavorite}
+                    busy={busy}
+                  />
+                ))}
+              </div>
+              <div className="py-3 text-center text-xs text-muted-foreground">
+                {shown < visible.length
+                  ? `Showing ${paged.length} of ${visible.length} — scroll for more`
+                  : `${visible.length} location${visible.length === 1 ? "" : "s"}`}
+              </div>
+            </>
           )}
-        </div>
       </div>
 
       {lastResult && (

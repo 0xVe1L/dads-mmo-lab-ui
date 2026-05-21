@@ -73,7 +73,7 @@ function buildNavNodes(ahbotNeedsConfig: boolean): NavNode[] {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { ahbotNeedsConfig } = useServerState()
+  const { ahbotNeedsConfig, setActivePage } = useServerState()
   const nodes = React.useMemo(
     () => buildNavNodes(ahbotNeedsConfig),
     [ahbotNeedsConfig]
@@ -87,14 +87,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              asChild
               size="lg"
+              onClick={() => setActivePage("dashboard")}
               className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
-              <a href="#">
-                <WowIcon size={32} />
-                <span className="text-lg font-semibold">WoW 3.3.5a Server</span>
-              </a>
+              <WowIcon size={32} />
+              <span className="text-lg font-semibold">WoW 3.3.5a Server</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -94,9 +94,10 @@ export function CharacterSwitcher() {
               </SidebarMenuButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              side="top"
-              align="start"
-              className="w-(--radix-popper-anchor-width) min-w-56 rounded-lg"
+              side="right"
+              align="end"
+              sideOffset={8}
+              className="min-w-56 rounded-lg"
             >
               <DropdownMenuLabel className="text-xs text-muted-foreground">
                 Your characters

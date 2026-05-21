@@ -68,7 +68,7 @@ export function ModulesScreen() {
   }, [installedModules, ahbotNeedsConfig])
 
   return (
-    <div className="grid h-[calc(100svh-var(--header-height))] grid-rows-[auto_minmax(0,1fr)] gap-4 p-6">
+    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-4 p-6">
       <header className="flex items-center justify-between gap-4">
         <div className="space-y-1">
           <h1 className="flex items-center gap-2 font-heading text-2xl font-semibold leading-tight">

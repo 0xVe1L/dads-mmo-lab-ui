@@ -11,6 +11,7 @@ mod install;
 mod inventory;
 mod modules;
 mod server;
+mod sfx;
 mod soap;
 mod teleport;
 mod wow_client;
@@ -122,7 +123,8 @@ pub fn run() {
             dashboard::gm_set_power_pct,
             dashboard::gm_revive,
             controller::get_consoleportlk_status,
-            controller::install_consoleportlk
+            controller::install_consoleportlk,
+            sfx::play_sfx
         ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {

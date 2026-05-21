@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/sidebar"
 import { PreInstallTooltip } from "@/components/pre-install-tooltip"
 import { useServerState } from "@/components/server-state-context"
+import { getSfxPrefs, playSfx } from "@/lib/sfx"
 import { isTauri } from "@/lib/tauri"
 
 /**
@@ -42,10 +43,22 @@ export function NavSecondary({
 
   const handleQuit = React.useCallback(async () => {
     if (!isTauri()) return
-    try {
-      await getCurrentWindow().close()
-    } catch (err) {
-      console.error("quit failed", err)
+    // Play the stealth cue, then give it a beat to be audible before the
+    // window closes (closing kills the audio). Skip the delay entirely
+    // when SFX are off.
+    playSfx("stealth")
+    const delay = getSfxPrefs().enabled ? 450 : 0
+    const close = async () => {
+      try {
+        await getCurrentWindow().close()
+      } catch (err) {
+        console.error("quit failed", err)
+      }
+    }
+    if (delay === 0) {
+      void close()
+    } else {
+      setTimeout(() => void close(), delay)
     }
   }, [])
 
@@ -111,7 +124,7 @@ export function NavSecondary({
             <SidebarMenuButton
               onClick={() => void handleQuit()}
               tooltip="Quit"
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
             >
               <PowerIcon />
               <span>Quit</span>
