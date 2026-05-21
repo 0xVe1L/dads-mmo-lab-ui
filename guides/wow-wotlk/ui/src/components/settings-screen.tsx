@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import { ControllerSupportSection } from "@/components/controller-support-section"
+import { UpdateChecker } from "@/components/update-checker"
 import { useServerState } from "@/components/server-state-context"
 import { useSfx } from "@/lib/sfx"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
@@ -388,6 +389,14 @@ export function SettingsScreen() {
         </Section>
 
         <ControllerSupportSection />
+
+        <Section
+          icon={<ArrowClockwiseIcon className="size-5 text-muted-foreground" />}
+          title="Updates"
+          subtitle="Check for a new version of The Lab and install it in place. The server, your characters, and settings are untouched."
+        >
+          <UpdateChecker />
+        </Section>
       </div>
     </div>
   )

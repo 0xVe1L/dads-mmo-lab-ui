@@ -201,6 +201,63 @@ pub fn detect_installs() -> Result<DetectionResult, String> {
     Ok(DetectionResult { installs })
 }
 
+/// Adopt an externally-installed server — one created by a different but
+/// compatible script (e.g. the original `install-wow.sh`), which doesn't
+/// write our `.dads-mmo-lab/install.json` marker. We verify the server is
+/// actually up, then write a minimal marker so the app treats it as a
+/// complete, managed install. Unlike the "Finish setup" resume path, this
+/// does NOT run the account/AHBot bootstrap — the foreign install already
+/// has its own accounts and we mustn't clobber them.
+#[tauri::command]
+pub fn adopt_install(path: String) -> Result<(), String> {
+    let root = PathBuf::from(&path);
+    if !root.join("docker-compose.yml").exists() {
+        return Err(format!(
+            "{} doesn't look like a server install (no docker-compose.yml).",
+            path
+        ));
+    }
+
+    // Guard: only adopt a server that's actually running, so we never mark
+    // a broken or half-built install "complete". Mirrors the worldserver
+    // guard in the install script.
+    let ps = std::process::Command::new("docker")
+        .args(["ps", "--format", "{{.Names}}"])
+        .output()
+        .map_err(|e| format!("docker ps failed: {e}"))?;
+    let worldserver_up = ps.status.success()
+        && String::from_utf8_lossy(&ps.stdout)
+            .to_lowercase()
+            .contains("worldserver");
+    if !worldserver_up {
+        return Err(
+            "No running worldserver container found — start the server first, then adopt it."
+                .into(),
+        );
+    }
+
+    let variant = match root.file_name().and_then(|n| n.to_str()) {
+        Some("wow-server-npcbots") => "npcbots",
+        Some("wow-server-playerbots") => "playerbots",
+        _ => "base",
+    };
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let meta_dir = root.join(".dads-mmo-lab");
+    std::fs::create_dir_all(&meta_dir)
+        .map_err(|e| format!("create {}: {e}", meta_dir.display()))?;
+    // `build_method: "external"` flags this as an adopted, non-UI install.
+    let json = format!(
+        "{{\n  \"version\": \"external\",\n  \"server_type\": \"{variant}\",\n  \"server_name\": \"WoW 3.3.5a (adopted)\",\n  \"build_method\": \"external\",\n  \"admin_user\": \"unknown\",\n  \"installed_at\": \"{ts}\"\n}}\n"
+    );
+    std::fs::write(meta_dir.join("install.json"), json)
+        .map_err(|e| format!("write install.json: {e}"))?;
+    Ok(())
+}
+
 /// Resolve the install-wow-ui.sh script. Resolution order:
 /// 1. `$DML_INSTALL_SCRIPT` override (testing).
 /// 2. The Tauri resource dir — this is where the script lands in a bundled

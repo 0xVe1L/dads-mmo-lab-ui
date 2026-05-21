@@ -51,6 +51,18 @@ fn external_navigation_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // WebKitGTK 2.40+ defaults to a DMABUF-based renderer that can't
+    // create an EGL display ("Could not create default EGL display:
+    // EGL_BAD_PARAMETER. Aborting...") in some environments — notably
+    // Steam Gaming Mode (gamescope) and Lutris's bundled runtime — even
+    // though it renders fine from a normal desktop session. Disabling
+    // that renderer falls back to a GL path that works in all of them.
+    // Set before the WebView/web process starts; honor a user override.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -73,6 +85,8 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(external_navigation_plugin())
         .manage(install::InstallState::default())
         .manage(server::ServerControlState::default())
@@ -80,6 +94,7 @@ pub fn run() {
             greet,
             bootstrap::bootstrap_privileges,
             install::detect_installs,
+            install::adopt_install,
             install::start_install,
             install::cancel_install,
             server::get_server_status,

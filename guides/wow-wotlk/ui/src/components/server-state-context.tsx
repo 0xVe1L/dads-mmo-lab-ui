@@ -247,6 +247,9 @@ type ServerState = {
   installComplete: boolean
   detecting: boolean
   refreshInstalls: () => Promise<void>
+  /** Mark an externally-installed (non-UI) server as a complete, managed
+   * install — writes the metadata marker without re-running bootstrap. */
+  adoptInstall: () => Promise<void>
 
   // Onboarding modal
   installOpen: boolean
@@ -593,6 +596,16 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       setDetecting(false)
     }
   }, [])
+
+  // Adopt an externally-installed server (no install.json) as a managed,
+  // complete install — writes the marker without running the UI bootstrap.
+  const adoptInstall = React.useCallback(async () => {
+    if (!isTauri()) return
+    const target = installs.find((i) => !i.complete) ?? installs[0]
+    if (!target) return
+    await trackedInvoke("adopt_install", { path: target.path })
+    await refreshInstalls()
+  }, [installs, refreshInstalls])
 
   React.useEffect(() => {
     void refreshInstalls()
@@ -1123,6 +1136,7 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       installComplete: installs.length > 0 && installs.every((i) => i.complete),
       detecting,
       refreshInstalls,
+      adoptInstall,
       installOpen,
       setInstallOpen,
       openInstall: () => setInstallOpen(true),
@@ -1165,6 +1179,7 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       installs,
       detecting,
       refreshInstalls,
+      adoptInstall,
       installOpen,
       installStatus,
       consoleState,
