@@ -1,8 +1,7 @@
 import * as React from "react"
-import { getCurrentWindow } from "@tauri-apps/api/window"
 
-import { GlobalCharacterCard } from "@/components/global-character-card"
-import { NavMain, type NavGroupSpec } from "@/components/nav-main"
+import { CharacterSwitcher } from "@/components/character-switcher"
+import { NavMain, ServerActionGroup, type NavNode } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { useServerState } from "@/components/server-state-context"
 import {
@@ -18,95 +17,72 @@ import {
   CompassIcon,
   DatabaseIcon,
   GavelIcon,
-  GearIcon,
   HouseIcon,
-  PowerIcon,
+  PackageIcon,
   PuzzlePieceIcon,
-  QuestionIcon,
   RobotIcon,
   SwordIcon,
-  TipJarIcon,
   UsersThreeIcon,
 } from "@phosphor-icons/react"
-import { isTauri } from "@/lib/tauri"
 import { WowIcon } from "@/components/wow-icon"
 
 /**
- * Source-of-truth for the sidebar's nav structure. Adding a page =
- * add a new entry here (and route for it in App.tsx + ActivePage).
- *
- * The "Inventory" + "Placeholder group #1" headings come from the
- * `heading` field on the group — disabled placeholder entries
- * (`disabled: true`) render but don't navigate, so users see what's
- * coming as we build it out.
+ * Source-of-truth for the scrollable nav. Direct routes are `item`s;
+ * collapsible groups (Inventory, Bots) are `group`s with sub-items.
+ * Disabled entries render greyed so users see what's coming.
  */
-function buildNavGroups(ahbotNeedsConfig: boolean): NavGroupSpec[] {
+function buildNavNodes(ahbotNeedsConfig: boolean): NavNode[] {
   return [
+    { kind: "item", title: "Dashboard", icon: <HouseIcon />, page: "dashboard" },
     {
-      // No heading — top-level routes always present.
-      items: [
-        { title: "Dashboard", icon: <HouseIcon />, page: "dashboard" },
-        {
-          title: "Modules",
-          icon: <PuzzlePieceIcon />,
-          page: "modules",
-          notify: ahbotNeedsConfig,
-          tooltip: ahbotNeedsConfig
-            ? "Modules (Auction House Bot needs setup!)"
-            : "Modules",
-        },
-        { title: "Teleport", icon: <CompassIcon />, page: "teleport" },
-      ],
+      kind: "item",
+      title: "Modules",
+      icon: <PuzzlePieceIcon />,
+      page: "modules",
+      notify: ahbotNeedsConfig,
+      tooltip: ahbotNeedsConfig
+        ? "Modules (Auction House Bot needs setup!)"
+        : "Modules",
     },
+    { kind: "item", title: "Teleport", icon: <CompassIcon />, page: "teleport" },
     {
-      heading: "Inventory",
+      kind: "group",
+      title: "Inventory",
+      icon: <PackageIcon />,
       items: [
-        // The page is still routed as `inventory` internally — only the
-        // display name changed to "Item Database".
+        // Routed internally as `inventory`; display name is "Item Database".
         { title: "Item Database", icon: <DatabaseIcon />, page: "inventory" },
         { title: "Gear Library", icon: <SwordIcon />, disabled: true },
+        { title: "Auction House", icon: <GavelIcon />, disabled: true },
       ],
     },
     {
-      // Placeholder group — names + icons reflect what we plan to
-      // build, even though the screens aren't wired yet.
-      heading: "Placeholder group #1",
+      kind: "group",
+      title: "Bots",
+      icon: <RobotIcon />,
       items: [
-        { title: "NPCs", icon: <UsersThreeIcon />, disabled: true },
+        {
+          title: "NPCs and Party Presets",
+          icon: <UsersThreeIcon />,
+          disabled: true,
+        },
         { title: "Player Bots", icon: <RobotIcon />, disabled: true },
-        { title: "Auction House", icon: <GavelIcon />, disabled: true },
       ],
     },
   ]
 }
 
-const SECONDARY_ITEMS = [
-  { title: "Settings", icon: <GearIcon />, url: "#" },
-  // Help + Support stay reachable pre-install — a user who can't get the
-  // server going is exactly who needs the help/support links.
-  { title: "Get Help", icon: <QuestionIcon />, url: "#", alwaysEnabled: true },
-  { title: "Support Us", icon: <TipJarIcon />, url: "#", alwaysEnabled: true },
-]
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { activePage, setActivePage, ahbotNeedsConfig } = useServerState()
-  const groups = React.useMemo(
-    () => buildNavGroups(ahbotNeedsConfig),
+  const { ahbotNeedsConfig } = useServerState()
+  const nodes = React.useMemo(
+    () => buildNavNodes(ahbotNeedsConfig),
     [ahbotNeedsConfig]
   )
-  // Wire the Settings entry to real routing while Get Help / Support
-  // Us stay as href="#" stubs for now.
-  const secondaryItems = SECONDARY_ITEMS.map((item) =>
-    item.title === "Settings"
-      ? {
-          ...item,
-          onClick: () => setActivePage("settings"),
-          isActive: activePage === "settings",
-        }
-      : item
-  )
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
+      {/* Static header: logo + the server action button stay put while the
+          nav below scrolls. */}
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -122,47 +98,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <ServerActionGroup />
       </SidebarHeader>
+
+      {/* Scrollable nav. */}
       <SidebarContent>
-        <NavMain groups={groups} />
-        <NavSecondary items={secondaryItems} className="mt-auto" />
+        <NavMain nodes={nodes} />
       </SidebarContent>
+
+      {/* Static footer: Settings/More/Quit, then the character switcher. */}
       <SidebarFooter>
-        <GlobalCharacterCard />
-        <SidebarQuitButton />
+        <NavSecondary />
+        <CharacterSwitcher />
       </SidebarFooter>
     </Sidebar>
-  )
-}
-
-/**
- * Exit-the-app control. In fullscreen there's no window titlebar (and
- * thus no close button), so the user needs an in-app way out. Closing
- * the main window ends the process. Always enabled — unlike the rest of
- * the menu, quitting must work regardless of install state.
- */
-function SidebarQuitButton() {
-  const handleQuit = React.useCallback(async () => {
-    if (!isTauri()) return
-    try {
-      await getCurrentWindow().close()
-    } catch (err) {
-      console.error("quit failed", err)
-    }
-  }, [])
-
-  return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          onClick={() => void handleQuit()}
-          tooltip="Quit"
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <PowerIcon />
-          <span>Quit</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
   )
 }

@@ -38,6 +38,12 @@ pub struct AppSettings {
     /// that slot. None when nothing's selected. Frontend silently
     /// clears the selection if the GUID no longer exists.
     pub selected_character_guid: Option<u64>,
+    /// GUIDs the user added to the sidebar character switcher — a curated
+    /// subset of their characters they quick-switch between (different
+    /// classes/roles). Distinct from the chardb: removing one here only
+    /// drops it from the switcher, it never deletes the character.
+    /// `selected_character_guid` is the active one among these.
+    pub switcher_character_guids: Vec<u64>,
 }
 
 fn settings_path() -> Option<PathBuf> {
@@ -140,5 +146,19 @@ pub fn set_selected_character_guid(guid: Option<u64>) -> Result<(), String> {
         return Ok(());
     }
     s.selected_character_guid = guid;
+    save(&s)
+}
+
+// ── Character switcher list ─────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_switcher_character_guids() -> Vec<u64> {
+    load().switcher_character_guids
+}
+
+#[tauri::command]
+pub fn set_switcher_character_guids(guids: Vec<u64>) -> Result<(), String> {
+    let mut s = load();
+    s.switcher_character_guids = guids;
     save(&s)
 }

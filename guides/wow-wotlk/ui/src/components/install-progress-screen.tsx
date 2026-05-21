@@ -83,7 +83,7 @@ export function InstallProgressScreen() {
     // from growing: the install screen never asks its parent for more
     // height than the viewport minus the site header.
     <div
-      className="grid h-[calc(100svh-var(--header-height))] grid-rows-[auto_minmax(0,1fr)_auto] gap-4 p-6"
+      className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-4 p-6"
     >
       <header className="flex items-center justify-between gap-4">
         <div className="space-y-1">

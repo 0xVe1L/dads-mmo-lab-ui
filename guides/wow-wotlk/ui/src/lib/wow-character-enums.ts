@@ -35,6 +35,23 @@ export const CLASS_NAMES: Record<number, string> = {
   11: "Druid",
 }
 
+/** Wowhead/zamimg CDN icon basename for each class. Rendered exactly
+ * like item icons — `https://wow.zamimg.com/images/wow/icons/<size>/<name>.jpg`
+ * — so the character avatar in the switcher + menu card shows the
+ * familiar class crest instead of a generic placeholder. */
+export const CLASS_ICON_NAMES: Record<number, string> = {
+  1: "classicon_warrior",
+  2: "classicon_paladin",
+  3: "classicon_hunter",
+  4: "classicon_rogue",
+  5: "classicon_priest",
+  6: "classicon_deathknight",
+  7: "classicon_shaman",
+  8: "classicon_mage",
+  9: "classicon_warlock",
+  11: "classicon_druid",
+}
+
 /** Tailwind utility class with the WoW-canonical class color. */
 export const CLASS_COLORS: Record<number, string> = {
   1: "text-[#C79C6E]", // Warrior — tan

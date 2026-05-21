@@ -3,6 +3,7 @@ import type { CSSProperties } from "react"
 import { AhBotIntroOverlay } from "@/components/ahbot-intro-overlay"
 import { AppSidebar } from "@/components/app-sidebar"
 import { DashboardPlayerView } from "@/components/dashboard-player-view"
+import { HelpScreen } from "@/components/help-screen"
 import { InstallOnboarding } from "@/components/install-onboarding"
 import { InstallProgressScreen } from "@/components/install-progress-screen"
 import { InstallResumeBanner } from "@/components/install-resume-banner"
@@ -39,7 +40,6 @@ function AppShell() {
     setInstallOpen,
     installStatus,
     serverActionStatus,
-    serverActionKind,
     activePage,
   } = useServerState()
 
@@ -56,21 +56,11 @@ function AppShell() {
   const showInventory = isPagedView && activePage === "inventory"
   const showSettings = isPagedView && activePage === "settings"
   const showDashboard = isPagedView && activePage === "dashboard"
-
-  let title = "Welcome!"
-  if (showInstallScreen) title = "Installing"
-  else if (showServerActionScreen)
-    title =
-      serverActionKind === "stop"
-        ? "Stopping server"
-        : serverActionKind === "restart"
-          ? "Restarting server"
-          : "Starting server"
-  else if (showModules) title = "Modules"
-  else if (showTeleport) title = "Teleport"
-  else if (showInventory) title = "Item Database"
-  else if (showSettings) title = "Settings"
-  else if (showDashboard) title = "Dashboard"
+  // Help lives under the always-available "More" menu, so it routes even
+  // before a server is installed (an install that won't start is exactly
+  // when people need it).
+  const showHelp =
+    !showInstallScreen && !showServerActionScreen && activePage === "help"
 
   let mainContent
   if (showInstallScreen) {
@@ -85,6 +75,8 @@ function AppShell() {
     mainContent = <InventoryScreen />
   } else if (showSettings) {
     mainContent = <SettingsScreen />
+  } else if (showHelp) {
+    mainContent = <HelpScreen />
   } else if (showDashboard) {
     mainContent = (
       // Banner row above the player paperdoll. Self-dismissing per
@@ -117,9 +109,11 @@ function AppShell() {
         }
       >
         <AppSidebar variant="inset" />
-        <SidebarInset>
-          <SiteHeader title={title} />
-          <div className="flex flex-1 flex-col">{mainContent}</div>
+        <SidebarInset className="min-h-0 overflow-hidden">
+          <SiteHeader />
+          <div className="flex flex-1 flex-col overflow-y-auto">
+            {mainContent}
+          </div>
         </SidebarInset>
       </SidebarProvider>
       <InstallOnboarding open={installOpen} onOpenChange={setInstallOpen} />

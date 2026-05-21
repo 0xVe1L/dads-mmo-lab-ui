@@ -1,12 +1,19 @@
 import * as React from "react"
 
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { ButtonGroup } from "@/components/ui/button-group"
@@ -20,6 +27,7 @@ import {
   ArrowClockwiseIcon,
   ArrowRightIcon,
   CaretDownIcon,
+  CaretRightIcon,
   FloppyDiskBackIcon,
   PlayIcon,
   StopIcon,
@@ -31,6 +39,7 @@ import {
   useServerState,
   type ActivePage,
 } from "@/components/server-state-context"
+import { cn } from "@/lib/utils"
 import loadingAnimation from "@/assets/lottie/loadingV4.json"
 
 /**
@@ -53,20 +62,27 @@ export type NavEntry = {
   tooltip?: string
 }
 
-export type NavGroupSpec = {
-  /** Optional group heading. Without one, the group renders flush
-   * with whatever's above it — matches the "no heading on the first
-   * group" pattern in the design. */
-  heading?: string
-  items: NavEntry[]
-}
+/**
+ * A top-level nav node: either a direct route (`item`) or a collapsible
+ * group of routes (`group`) shown with the sidebar-07 tree-line styling.
+ */
+export type NavNode =
+  | ({ kind: "item" } & NavEntry)
+  | {
+      kind: "group"
+      title: string
+      icon: React.ReactNode
+      items: NavEntry[]
+      /** Whether the group starts expanded (default true). */
+      defaultOpen?: boolean
+    }
 
 /**
  * Top of the sidebar: the install/start/stop server button. Stays
  * separate from the routing nav because its state depends on the
  * server lifecycle, not on what page the user is looking at.
  */
-function ServerActionGroup() {
+export function ServerActionGroup() {
   const {
     installed,
     openInstall,
@@ -124,57 +140,116 @@ function ServerActionGroup() {
 }
 
 /**
- * Renders the server-action button followed by an arbitrary list of
- * navigation groups. Groups are rendered as separate `<SidebarGroup>`
- * blocks, which gives natural vertical spacing between them.
- *
- * The shape of `groups` is dictated by app-sidebar.tsx — that's where
- * "what's in the sidebar today" lives, so reordering / adding pages
- * happens there, not here.
+ * The scrollable nav. Top-level entries are either direct routes or
+ * collapsible groups (sidebar-07 style). The server action button is NOT
+ * here anymore — it lives in the static SidebarHeader so it stays put
+ * while this list scrolls. `nodes` come from app-sidebar.tsx.
  */
-export function NavMain({ groups }: { groups: NavGroupSpec[] }) {
-  const { installed, activePage, setActivePage } = useServerState()
+export function NavMain({ nodes }: { nodes: NavNode[] }) {
+  const { installed } = useServerState()
   return (
-    <>
-      <ServerActionGroup />
-      {groups.map((group, gi) => (
-        <SidebarGroup key={gi}>
-          {group.heading && (
-            <SidebarGroupLabel>{group.heading}</SidebarGroupLabel>
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {nodes.map((node) =>
+            node.kind === "group" ? (
+              <NavGroup key={node.title} node={node} installed={installed} />
+            ) : (
+              <NavItem key={node.title} entry={node} installed={installed} />
+            )
           )}
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {group.items.map((entry) => {
-                const isDisabled = entry.disabled || !installed
-                const isActive =
-                  entry.page != null && activePage === entry.page
-                return (
-                  <SidebarMenuItem key={entry.title}>
-                    <PreInstallTooltip show={!installed}>
-                      <SidebarMenuButton
-                        tooltip={entry.tooltip ?? entry.title}
-                        onClick={() => {
-                          if (!entry.disabled && entry.page) {
-                            setActivePage(entry.page)
-                          }
-                        }}
-                        isActive={isActive}
-                        disabled={isDisabled}
-                        className={entry.notify ? "relative" : undefined}
-                      >
-                        {entry.icon}
-                        <span>{entry.title}</span>
-                        {entry.notify && <NotificationDot />}
-                      </SidebarMenuButton>
-                    </PreInstallTooltip>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
-    </>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
+/** A direct top-level route. */
+function NavItem({
+  entry,
+  installed,
+}: {
+  entry: NavEntry
+  installed: boolean
+}) {
+  const { activePage, setActivePage } = useServerState()
+  const isActive = entry.page != null && activePage === entry.page
+  return (
+    <SidebarMenuItem>
+      <PreInstallTooltip show={!installed}>
+        <SidebarMenuButton
+          tooltip={entry.tooltip ?? entry.title}
+          onClick={() => {
+            if (!entry.disabled && entry.page) setActivePage(entry.page)
+          }}
+          isActive={isActive}
+          disabled={entry.disabled || !installed}
+          className={entry.notify ? "relative" : undefined}
+        >
+          {entry.icon}
+          <span>{entry.title}</span>
+          {entry.notify && <NotificationDot />}
+        </SidebarMenuButton>
+      </PreInstallTooltip>
+    </SidebarMenuItem>
+  )
+}
+
+/** A collapsible group with tree-line sub-items. */
+function NavGroup({
+  node,
+  installed,
+}: {
+  node: Extract<NavNode, { kind: "group" }>
+  installed: boolean
+}) {
+  const { activePage, setActivePage } = useServerState()
+  return (
+    <Collapsible
+      asChild
+      defaultOpen={node.defaultOpen ?? true}
+      className="group/collapsible"
+    >
+      <SidebarMenuItem>
+        <PreInstallTooltip show={!installed}>
+          <CollapsibleTrigger asChild>
+            {/* Disabled pre-install like the rest of the menu, so it can't
+                expand until there's a server. */}
+            <SidebarMenuButton tooltip={node.title} disabled={!installed}>
+              {node.icon}
+              <span>{node.title}</span>
+              <CaretRightIcon className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+        </PreInstallTooltip>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {node.items.map((sub) => {
+              const disabled = sub.disabled || !installed
+              const isActive = sub.page != null && activePage === sub.page
+              return (
+                <SidebarMenuSubItem key={sub.title}>
+                  <SidebarMenuSubButton
+                    isActive={isActive}
+                    aria-disabled={disabled}
+                    className={cn(
+                      "cursor-pointer",
+                      disabled && "cursor-default opacity-50"
+                    )}
+                    onClick={() => {
+                      if (!sub.disabled && sub.page) setActivePage(sub.page)
+                    }}
+                  >
+                    {sub.icon}
+                    <span>{sub.title}</span>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              )
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
   )
 }
 

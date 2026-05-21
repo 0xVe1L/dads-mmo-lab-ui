@@ -53,7 +53,9 @@ mkdir -p "$CACHE_DIR"
 # pacman installs them all in one transaction.
 # ─────────────────────────────────────────
 # Compiler toolchain + C headers (glibc/kernel headers get stripped too).
-TOOLCHAIN=(base-devel glibc linux-api-headers)
+# xdg-utils provides /usr/bin/xdg-open, which Tauri's AppImage bundler embeds
+# (bundling fails with "xdg-open binary not found" without it).
+TOOLCHAIN=(base-devel glibc linux-api-headers xdg-utils)
 
 # Tauri's GTK / WebKit dev stack (top-level).
 GTK_WEBKIT=(
@@ -64,7 +66,7 @@ GTK_WEBKIT=(
 # Transitive dev deps whose .pc/headers are ALSO stripped — discovered by
 # walking the pkg-config --libs --cflags chain. Reinstalling restores them.
 TRANSITIVE=(
-  pcre2 libffi libsysprof-capture zlib bzip2 brotli graphite expat
+  pcre2 libffi libsysprof-capture zlib bzip2 brotli graphite expat libxml2
   libx11 libxext libxrender libxcb pixman libjpeg-turbo libtiff
   util-linux-libs shared-mime-info fribidi libthai libdatrie xorgproto
   libxft libxau libxdmcp zstd xz sqlite libpsl libnghttp2 libxkbcommon
@@ -75,7 +77,7 @@ TRANSITIVE=(
 PKGS=("${TOOLCHAIN[@]}" "${GTK_WEBKIT[@]}" "${TRANSITIVE[@]}")
 
 # ─────────────────────────────────────────
-print_step "1/4  Unlock the rootfs"
+print_step "1/5  Unlock the rootfs"
 # ─────────────────────────────────────────
 if command -v steamos-readonly &>/dev/null; then
     sudo steamos-readonly disable || {
@@ -88,7 +90,28 @@ else
 fi
 
 # ─────────────────────────────────────────
-print_step "2/4  Refresh package databases"
+print_step "2/5  Ensure the pacman keyring"
+# ─────────────────────────────────────────
+# A fresh SteamOS install has no initialized keyring ("Public keyring not
+# found; have you run 'pacman-key --init'?"). Initialize + populate from the
+# on-disk key files. This is NON-destructive — it does not delete an existing
+# keyring — and safe to re-run. For a genuinely CORRUPT keyring (vs. just
+# missing), use fix-after-update.sh, which does a full reset.
+if sudo pacman-key --list-keys &>/dev/null; then
+    print_success "Keyring already initialized"
+else
+    print_info "No keyring yet (fresh install) — initializing + populating..."
+    if sudo pacman-key --init && sudo pacman-key --populate; then
+        print_success "Keyring initialized + populated"
+    else
+        print_error "Keyring init/populate failed. If it's corrupt (not just"
+        print_error "missing), run fix-after-update.sh, then re-run this."
+        exit 1
+    fi
+fi
+
+# ─────────────────────────────────────────
+print_step "3/5  Refresh package databases"
 # ─────────────────────────────────────────
 if ! sudo pacman -Sy --noconfirm --cachedir "$CACHE_DIR" archlinux-keyring; then
     print_warning "Database/keyring refresh failed."
@@ -98,7 +121,7 @@ fi
 print_success "Databases refreshed (cache: $CACHE_DIR)"
 
 # ─────────────────────────────────────────
-print_step "3/4  Install + restore build dependencies"
+print_step "4/5  Install + restore build dependencies"
 # ─────────────────────────────────────────
 print_info "${#PKGS[@]} packages — installs missing ones and re-lays stripped"
 print_info "dev files (.pc + headers). Downloads cached on /home."
@@ -112,7 +135,7 @@ fi
 print_success "Packages installed"
 
 # ─────────────────────────────────────────
-print_step "4/4  Verify the toolchain + dev chain"
+print_step "5/5  Verify the toolchain + dev chain"
 # ─────────────────────────────────────────
 FAIL=0
 for t in cc gcc make pkg-config; do

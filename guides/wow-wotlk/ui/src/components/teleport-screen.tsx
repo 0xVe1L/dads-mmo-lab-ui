@@ -198,7 +198,8 @@ export function TeleportScreen() {
       <header className="space-y-3">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <h1 className="font-heading text-2xl font-semibold leading-tight">
+            <h1 className="flex items-center gap-2 font-heading text-2xl font-semibold leading-tight">
+              <CompassIcon className="size-6 shrink-0 text-muted-foreground" />
               Teleport
             </h1>
             <p className="text-sm text-muted-foreground">

@@ -236,6 +236,7 @@ export type ActivePage =
   | "teleport"
   | "inventory"
   | "settings"
+  | "help"
 
 type ServerState = {
   // Detection
@@ -296,6 +297,12 @@ type ServerState = {
   selectedCharacterGuid: number | null
   selectedCharacter: GameCharacter | null
   setSelectedCharacterGuid: (guid: number | null) => Promise<void>
+  /** Characters in the sidebar switcher (curated subset), resolved + ordered. */
+  switcherCharacters: GameCharacter[]
+  /** Add a character to the switcher and make it active. */
+  addSwitcherCharacter: (guid: number) => Promise<void>
+  /** Remove from the switcher list only — never deletes from the chardb. */
+  removeSwitcherCharacter: (guid: number) => Promise<void>
 
   // Enrichment caches — loaded once at app start, shared by every
   // item-rendering surface. Empty / null means the extractor hasn't
@@ -546,6 +553,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
   const [selectedCharacterGuid, setSelectedCharacterGuidState] = React.useState<
     number | null
   >(null)
+  // Curated list of GUIDs in the sidebar character switcher (a subset of
+  // `characters`). Persisted; removing only drops from the switcher.
+  const [switcherGuids, setSwitcherGuidsState] = React.useState<number[]>([])
   const [iconMap, setIconMap] = React.useState<Record<string, string>>({})
   const [tooltipData, setTooltipData] = React.useState<TooltipData | null>(null)
 
@@ -657,6 +667,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
     void trackedInvoke<number | null>("get_selected_character_guid")
       .then((g) => setSelectedCharacterGuidState(g ?? null))
       .catch((e) => console.warn("get_selected_character_guid failed", e))
+    void trackedInvoke<number[]>("get_switcher_character_guids")
+      .then((g) => setSwitcherGuidsState(Array.isArray(g) ? g : []))
+      .catch((e) => console.warn("get_switcher_character_guids failed", e))
   }, [])
 
   // Auto-refresh the characters list when the worldserver is
@@ -714,6 +727,55 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       }
     },
     []
+  )
+
+  const persistSwitcherGuids = React.useCallback(async (next: number[]) => {
+    setSwitcherGuidsState(next)
+    if (!isTauri()) return
+    try {
+      await trackedInvoke("set_switcher_character_guids", { guids: next })
+    } catch (e) {
+      console.warn("set_switcher_character_guids failed", e)
+    }
+  }, [])
+
+  // Add a character to the switcher (dedup) and make it active.
+  const addSwitcherCharacter = React.useCallback(
+    async (guid: number) => {
+      if (!switcherGuids.includes(guid)) {
+        await persistSwitcherGuids([...switcherGuids, guid])
+      }
+      await setSelectedCharacterGuid(guid)
+    },
+    [switcherGuids, persistSwitcherGuids, setSelectedCharacterGuid]
+  )
+
+  // Remove from the switcher list only (never touches the chardb). If the
+  // active character was removed, fall back to the first remaining or clear.
+  const removeSwitcherCharacter = React.useCallback(
+    async (guid: number) => {
+      const next = switcherGuids.filter((g) => g !== guid)
+      await persistSwitcherGuids(next)
+      if (selectedCharacterGuid === guid) {
+        await setSelectedCharacterGuid(next[0] ?? null)
+      }
+    },
+    [
+      switcherGuids,
+      selectedCharacterGuid,
+      persistSwitcherGuids,
+      setSelectedCharacterGuid,
+    ]
+  )
+
+  // The switcher list resolved to character objects (drops any GUID whose
+  // character no longer exists in the chardb).
+  const switcherCharacters = React.useMemo(
+    () =>
+      switcherGuids
+        .map((g) => characters.find((c) => c.guid === g))
+        .filter((c): c is GameCharacter => c != null),
+    [switcherGuids, characters]
   )
 
   // Resolved character object. Returns null if (a) nothing's selected,
@@ -1088,6 +1150,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       selectedCharacterGuid,
       selectedCharacter,
       setSelectedCharacterGuid,
+      switcherCharacters,
+      addSwitcherCharacter,
+      removeSwitcherCharacter,
       iconMap,
       tooltipData,
       refreshEnrichmentCaches,
@@ -1122,6 +1187,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
       selectedCharacterGuid,
       selectedCharacter,
       setSelectedCharacterGuid,
+      switcherCharacters,
+      addSwitcherCharacter,
+      removeSwitcherCharacter,
       iconMap,
       tooltipData,
       refreshEnrichmentCaches,

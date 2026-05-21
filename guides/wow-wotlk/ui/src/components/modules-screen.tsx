@@ -71,7 +71,8 @@ export function ModulesScreen() {
     <div className="grid h-[calc(100svh-var(--header-height))] grid-rows-[auto_minmax(0,1fr)] gap-4 p-6">
       <header className="flex items-center justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="font-heading text-2xl font-semibold leading-tight">
+          <h1 className="flex items-center gap-2 font-heading text-2xl font-semibold leading-tight">
+            <PuzzlePieceIcon className="size-6 shrink-0 text-muted-foreground" />
             Modules
           </h1>
           <p className="text-sm text-muted-foreground">

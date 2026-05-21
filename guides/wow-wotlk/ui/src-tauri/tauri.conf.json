@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TheLab",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "identifier": "com.dads-mmo-lab-wotlk.ui",
   "build": {
     "beforeDevCommand": "bun run dev",

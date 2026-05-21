@@ -114,6 +114,8 @@ pub fn run() {
             app_settings::set_inventory_show_deprecated,
             app_settings::get_selected_character_guid,
             app_settings::set_selected_character_guid,
+            app_settings::get_switcher_character_guids,
+            app_settings::set_switcher_character_guids,
             dashboard::get_character_paperdoll,
             dashboard::gm_set_money,
             dashboard::gm_set_health_pct,
