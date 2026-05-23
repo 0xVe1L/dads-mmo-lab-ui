@@ -10,6 +10,14 @@ import {
 } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
 import { cn } from "@/lib/utils"
 
@@ -66,7 +74,10 @@ function ConsolePortLKCard() {
   const [installInfo, setInstallInfo] = React.useState<{
     file_count: number
     folders: string[]
+    accounts_seeded: number
+    appid: number
   } | null>(null)
+  const [noShortcutOpen, setNoShortcutOpen] = React.useState(false)
 
   const refresh = React.useCallback(async () => {
     if (!isTauri()) return
@@ -87,13 +98,35 @@ function ConsolePortLKCard() {
   const install = async () => {
     setBusy(true)
     setError(null)
+    setInstallInfo(null)
     try {
+      // Prerequisite: the user must have WoW added to Steam as a non-
+      // Steam game — that's the target for our controller layout. If
+      // it's missing, prompt and bail (no destructive work done yet).
+      const shortcut = await trackedInvoke<{
+        appid: number
+        name: string
+      } | null>("find_wow_steam_shortcut")
+      if (!shortcut) {
+        setNoShortcutOpen(true)
+        return
+      }
       const result = await trackedInvoke<{
         file_count: number
         folders: string[]
         version: string
+        accounts_seeded: number
       }>("install_consoleportlk")
-      setInstallInfo(result)
+      // Apply the Steam Workshop controller layout (subscribe + apply
+      // via the steam:// URL scheme). Non-fatal if Steam isn't there.
+      try {
+        await trackedInvoke("apply_controller_preset", {
+          appid: shortcut.appid,
+        })
+      } catch (presetErr) {
+        console.warn("apply_controller_preset failed", presetErr)
+      }
+      setInstallInfo({ ...result, appid: shortcut.appid })
       await refresh()
     } catch (e) {
       setError(typeof e === "string" ? e : String(e))
@@ -154,11 +187,35 @@ function ConsolePortLKCard() {
       )}
 
       {installInfo && (
-        <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
-          ✓ Installed {installInfo.file_count.toLocaleString()} files
-          across {installInfo.folders.length} addon folders. Restart
-          WoW (or run <span className="font-mono">/reload</span>) to
-          activate.
+        <div className="space-y-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+          <div>
+            ✓ Installed {installInfo.file_count.toLocaleString()} files
+            across {installInfo.folders.length} addon folders.
+          </div>
+          <div>
+            {installInfo.accounts_seeded > 0 ? (
+              <>
+                Applied the controller preset to{" "}
+                {installInfo.accounts_seeded} WoW account
+                {installInfo.accounts_seeded === 1 ? "" : "s"}. Steam
+                should prompt you to subscribe to "The Lab:
+                ConsolePortLK" and apply it to your WoW shortcut — say
+                yes.
+              </>
+            ) : (
+              <>
+                Addon is in, but no WoW account folders exist yet —{" "}
+                <span className="font-medium">launch WoW once</span> so
+                the per-account folder is created, then click{" "}
+                <span className="font-medium">Reinstall</span> to apply
+                the controller bindings.
+              </>
+            )}
+          </div>
+          <div className="text-emerald-700/70 dark:text-emerald-300/70">
+            Restart WoW (or run <span className="font-mono">/reload</span>)
+            to pick up the addon.
+          </div>
         </div>
       )}
 
@@ -182,6 +239,44 @@ function ConsolePortLKCard() {
               : "Install ConsolePortLK"}
         </Button>
       </div>
+
+      <Dialog open={noShortcutOpen} onOpenChange={setNoShortcutOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add WoW to Steam first</DialogTitle>
+            <DialogDescription>
+              To apply The Lab's controller layout, your WoW client needs
+              to be added to Steam as a non-Steam game. Once it's there,
+              come back and click Install ConsolePortLK again.
+            </DialogDescription>
+          </DialogHeader>
+          <ol className="list-decimal space-y-1 pl-5 text-sm">
+            <li>
+              Switch to <span className="font-medium">Desktop Mode</span>{" "}
+              and open Steam.
+            </li>
+            <li>
+              <span className="font-medium">
+                Games → Add a Non-Steam Game…
+              </span>{" "}
+              (or right-click your Lutris WoW entry → Create Steam
+              Shortcut).
+            </li>
+            <li>
+              Pick your WoW launcher (or the Lutris WoW entry) and click{" "}
+              <span className="font-medium">Add Selected</span>.
+            </li>
+            <li>
+              Return here and click{" "}
+              <span className="font-medium">Install ConsolePortLK</span>{" "}
+              again.
+            </li>
+          </ol>
+          <DialogFooter>
+            <Button onClick={() => setNoShortcutOpen(false)}>Got it</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

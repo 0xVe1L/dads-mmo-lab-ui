@@ -139,6 +139,8 @@ pub fn run() {
             dashboard::gm_revive,
             controller::get_consoleportlk_status,
             controller::install_consoleportlk,
+            controller::find_wow_steam_shortcut,
+            controller::apply_controller_preset,
             sfx::play_sfx
         ])
         .on_page_load(|webview, payload| {
