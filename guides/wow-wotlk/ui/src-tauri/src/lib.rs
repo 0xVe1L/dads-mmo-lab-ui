@@ -10,6 +10,7 @@ mod dashboard;
 mod install;
 mod inventory;
 mod modules;
+mod playerbots;
 mod server;
 mod sfx;
 mod soap;
@@ -109,6 +110,7 @@ pub fn run() {
             teleport::list_teleport_locations,
             teleport::teleport_character_to_location,
             teleport::teleport_character_to_coords,
+            playerbots::list_playerbots,
             inventory::search_items,
             inventory::get_item_details,
             inventory::get_items_by_entries,

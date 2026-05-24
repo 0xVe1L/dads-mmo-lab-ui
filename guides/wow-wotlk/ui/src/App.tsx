@@ -11,6 +11,7 @@ import { InstallProgressScreen } from "@/components/install-progress-screen"
 import { InstallResumeBanner } from "@/components/install-resume-banner"
 import { InventoryScreen } from "@/components/inventory-screen"
 import { ModulesScreen } from "@/components/modules-screen"
+import { PlayerbotsScreen } from "@/components/playerbots-screen"
 import { ServerControlScreen } from "@/components/server-control-screen"
 import { SettingsScreen } from "@/components/settings-screen"
 import { TeleportScreen } from "@/components/teleport-screen"
@@ -61,6 +62,7 @@ function AppShell() {
   const showModules = isPagedView && activePage === "modules"
   const showTeleport = isPagedView && activePage === "teleport"
   const showInventory = isPagedView && activePage === "inventory"
+  const showPlayerbots = isPagedView && activePage === "playerbots"
   const showSettings = isPagedView && activePage === "settings"
   const showDashboard = isPagedView && activePage === "dashboard"
   // Help lives under the always-available "More" menu, so it routes even
@@ -80,6 +82,8 @@ function AppShell() {
     mainContent = <TeleportScreen />
   } else if (showInventory) {
     mainContent = <InventoryScreen />
+  } else if (showPlayerbots) {
+    mainContent = <PlayerbotsScreen />
   } else if (showSettings) {
     mainContent = <SettingsScreen />
   } else if (showHelp) {

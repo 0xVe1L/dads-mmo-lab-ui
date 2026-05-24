@@ -58,3 +58,12 @@ opposite of what this app is for.
   shows up only when the character meets the criteria above.
 - Refresh the character paperdoll after success so the new
   location + items appear immediately.
+
+
+
+## One-Click Steam Shortcuts
+
+**Problem:** Users currently have to manually add The Lab and their WoW 3.3.5a client into Steam as a "non-Steam game" in order to have it appear in their Library
+
+**Solution:** Once users have succeeded with the server installation and have set their client path, we simply do this step for them similar to how Lutris does it.
+The Lab is simple because its just a linux AppImage that needs to be added and it can be run directly. The WoW client differs in that it's native to Windows so we have to set up Wine compatibilty using GE-Proton

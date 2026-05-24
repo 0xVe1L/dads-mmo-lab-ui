@@ -236,6 +236,7 @@ export type ActivePage =
   | "modules"
   | "teleport"
   | "inventory"
+  | "playerbots"
   | "settings"
   | "help"
 

@@ -66,7 +66,7 @@ function buildNavNodes(ahbotNeedsConfig: boolean): NavNode[] {
           icon: <UsersThreeIcon />,
           disabled: true,
         },
-        { title: "Player Bots", icon: <RobotIcon />, disabled: true },
+        { title: "Player Bots", icon: <RobotIcon />, page: "playerbots" },
       ],
     },
   ]
