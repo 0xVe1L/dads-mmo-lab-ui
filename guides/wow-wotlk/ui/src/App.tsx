@@ -4,17 +4,15 @@ import type { CSSProperties } from "react"
 import { AhBotIntroOverlay } from "@/components/ahbot-intro-overlay"
 import { SplashScreen } from "@/components/splash-screen"
 import { AppSidebar } from "@/components/app-sidebar"
-import { DashboardPlayerView } from "@/components/dashboard-player-view"
+import { DashboardShell } from "@/components/dashboard-shell"
 import { HelpScreen } from "@/components/help-screen"
 import { InstallOnboarding } from "@/components/install-onboarding"
 import { InstallProgressScreen } from "@/components/install-progress-screen"
-import { InstallResumeBanner } from "@/components/install-resume-banner"
 import { InventoryScreen } from "@/components/inventory-screen"
 import { PlayerbotsScreen } from "@/components/playerbots-screen"
 import { ServerControlScreen } from "@/components/server-control-screen"
 import { SettingsScreen } from "@/components/settings-screen"
 import { TeleportScreen } from "@/components/teleport-screen"
-import { WowClientCard } from "@/components/wow-client-card"
 import {
   ServerStateProvider,
   useServerState,
@@ -42,7 +40,6 @@ export default function App() {
 function AppShell() {
   const {
     installed,
-    installComplete,
     installOpen,
     setInstallOpen,
     installStatus,
@@ -85,22 +82,11 @@ function AppShell() {
   } else if (showHelp) {
     mainContent = <HelpScreen />
   } else if (showDashboard) {
-    mainContent = (
-      // Banner row above the player paperdoll. Self-dismissing per
-      // localStorage, so they don't pester on every visit.
-      <div className="flex flex-1 flex-col">
-        <div className="space-y-3 px-4 pt-4 lg:px-6">
-          {/* Resume banner only shows for partial installs (banner
-              self-guards on installComplete). The realmlist reminder
-              is gated on installComplete here so the two are mutually
-              exclusive — a half-done install has bigger problems than
-              a missing realmlist edit. */}
-          <InstallResumeBanner />
-          {installComplete && <WowClientCard />}
-        </div>
-        <DashboardPlayerView />
-      </div>
-    )
+    // DashboardShell owns the banner row + the [Player View] / [My
+    // Party] tab structure. Banners are part of the shell so both
+    // tabs see the same context (install-resume nag, realmlist
+    // reminder); tab state stays local to the shell.
+    mainContent = <DashboardShell />
   } else {
     mainContent = <WelcomeScreen />
   }

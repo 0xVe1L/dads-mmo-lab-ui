@@ -15,6 +15,8 @@ mod server;
 mod sfx;
 mod soap;
 mod steam_shortcuts;
+mod talent_dataset;
+mod talent_harvest;
 mod teleport;
 mod wow_client;
 
@@ -114,6 +116,8 @@ pub fn run() {
             playerbots::set_playerbot_level,
             playerbots::reroll_playerbot,
             playerbots::summon_playerbot_to_character,
+            talent_harvest::harvest_talent_builds,
+            talent_dataset::build_talent_dataset,
             inventory::search_items,
             inventory::get_item_details,
             inventory::get_items_by_entries,

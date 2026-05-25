@@ -3,12 +3,14 @@ import {
   ArrowClockwiseIcon,
   ArrowUUpLeftIcon,
   ChartBarIcon,
+  CheckCircleIcon,
   GearSixIcon,
   MagicWandIcon,
   MagnifyingGlassIcon,
   MapPinIcon,
   PaperPlaneTiltIcon,
   RobotIcon,
+  TreeStructureIcon,
   UsersThreeIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react"
@@ -431,7 +433,7 @@ export function PlayerbotsScreen() {
 
       {activeTab === "settings" ? (
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <SettingsTabPlaceholder />
+          <BotSettingsTab />
         </div>
       ) : (
         // Relative wrapper hosts the ScrollFade overlay so it sits at
@@ -942,16 +944,165 @@ function SpecSelect({
   )
 }
 
-function SettingsTabPlaceholder() {
+// ── Bot Settings tab ─────────────────────────────────────────────────
+
+type BuildDatasetResult = {
+  specCount: number
+  buildCount: number
+  sourceFile: string
+  outputPath: string
+  partialDecodes: string[]
+}
+
+function BotSettingsTab() {
   return (
-    <div className="rounded-md border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-      <GearSixIcon className="mx-auto mb-3 size-8" />
-      <div className="font-medium text-foreground">Bot settings — coming soon</div>
-      <p className="mx-auto mt-2 max-w-md text-xs">
-        This is where the chatter level slider, ambient density slider,
-        and bot count knobs will live. Lives here instead of the global
-        Settings page so bot config doesn't compete with app-wide prefs.
-      </p>
+    <div className="space-y-6 pr-1 pb-6">
+      <DatasetPanel />
+      <ComingSoonStub
+        icon={<UsersThreeIcon className="size-5" />}
+        title="Bot chatter"
+        description="Stepped slider — None / Light / Medium / Heavy. Writes the relevant playerbots.conf knobs (RandomBotTalk, RandomBotEmote, broadcast chances) and runs .playerbots rndbot reload to apply at runtime."
+      />
+      <ComingSoonStub
+        icon={<RobotIcon className="size-5" />}
+        title="Ambient density"
+        description="What percentage of the random bot pool is actively walking around the world at any given time. Surfaces BotActiveAlone from the conf as a 0–100 slider."
+      />
+    </div>
+  )
+}
+
+function DatasetPanel() {
+  const [result, setResult] = React.useState<BuildDatasetResult | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+  const [busy, setBusy] = React.useState(false)
+
+  const run = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await trackedInvoke<BuildDatasetResult>("build_talent_dataset")
+      setResult(r)
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e))
+      setResult(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-card p-4">
+      <div className="flex items-start gap-3">
+        <TreeStructureIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <div className="flex-1 space-y-1">
+          <div className="text-sm font-semibold leading-tight">
+            Talent build dataset
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Parses your installed{" "}
+            <span className="font-mono">playerbots.conf.dist</span> for
+            its <span className="font-mono">PremadeSpecLink</span> +{" "}
+            <span className="font-mono">PremadeSpecName</span> entries,
+            decodes the Wowhead-format talent links via the cached
+            talent metadata, and writes the result as JSON next to the
+            other app data. Covers every spec the mod knows about at Lv
+            60 / 65 / 70 / 80 — Vanilla through WotLK endgame. Used by
+            the My Party wizard to apply a chosen spec to a recruited
+            bot. Re-run after updating the mod.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button onClick={run} disabled={busy} size="sm">
+          {busy ? (
+            <>
+              <ArrowClockwiseIcon className="size-3.5 animate-spin" />
+              Building…
+            </>
+          ) : (
+            <>
+              <MagicWandIcon className="size-3.5" />
+              {result ? "Rebuild dataset" : "Build talent dataset"}
+            </>
+          )}
+        </Button>
+      </div>
+      {error && (
+        <div className="rounded-md border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-700 dark:text-rose-400">
+          <div className="flex items-start gap-2">
+            <WarningCircleIcon className="mt-0.5 size-3.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        </div>
+      )}
+      {result && <DatasetResultPanel result={result} />}
+    </div>
+  )
+}
+
+function DatasetResultPanel({ result }: { result: BuildDatasetResult }) {
+  return (
+    <div className="space-y-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-400">
+      <div className="flex items-start gap-2">
+        <CheckCircleIcon className="mt-0.5 size-4 shrink-0" />
+        <div className="flex-1 space-y-1">
+          <div className="font-medium">
+            Built {result.buildCount} build
+            {result.buildCount === 1 ? "" : "s"} across{" "}
+            {result.specCount} spec{result.specCount === 1 ? "" : "s"}.
+          </div>
+          <div className="space-y-0.5 font-mono text-[10px] text-emerald-700/70 dark:text-emerald-400/70">
+            <div>source: {result.sourceFile}</div>
+            <div>output: {result.outputPath}</div>
+          </div>
+          <div className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+            Commit the output file with your next change so released
+            builds include it.
+          </div>
+        </div>
+      </div>
+      {result.partialDecodes.length > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-amber-700 dark:text-amber-400">
+          <strong>
+            {result.partialDecodes.length} build
+            {result.partialDecodes.length === 1 ? "" : "s"} decoded
+            partially:
+          </strong>{" "}
+          {result.partialDecodes.slice(0, 12).join(", ")}
+          {result.partialDecodes.length > 12 ? "…" : ""} — at least one
+          talent in each couldn't be resolved against the talent cache.
+          Usually means the cache is from a different patch than the
+          conf. Re-run Settings → Talents → Extract.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ComingSoonStub({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode
+  title: string
+  description: string
+}) {
+  return (
+    <div className="rounded-md border border-dashed border-border bg-muted/20 p-4 opacity-70">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0 text-muted-foreground">{icon}</div>
+        <div className="flex-1 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold">{title}</span>
+            <span className="rounded-full bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">
+              Coming soon
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
     </div>
   )
 }
