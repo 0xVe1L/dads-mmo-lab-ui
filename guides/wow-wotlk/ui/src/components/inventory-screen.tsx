@@ -8,9 +8,9 @@ import {
   PackageIcon,
   PaperPlaneTiltIcon,
   SparkleIcon,
-  WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -450,8 +450,6 @@ function SendItemDialog({
   const [subject, setSubject] = React.useState("A gift")
   const [body, setBody] = React.useState("Sent from Dad's MMO Lab.")
   const [sending, setSending] = React.useState(false)
-  const [result, setResult] = React.useState<string | null>(null)
-  const [error, setError] = React.useState<string | null>(null)
 
   // Reset state every time a new item enters the dialog.
   React.useEffect(() => {
@@ -459,36 +457,38 @@ function SendItemDialog({
     setCount("1")
     setSubject(`Gift: ${item.name}`)
     setBody("Sent from Dad's MMO Lab.")
-    setResult(null)
-    setError(null)
   }, [item])
 
   const send = async () => {
     if (!item || !character) return
     const n = parseInt(count, 10)
     if (Number.isNaN(n) || n < 1) {
-      setError("Count must be at least 1.")
+      toast.error("Count must be at least 1")
       return
     }
     setSending(true)
-    setError(null)
-    setResult(null)
+    const id = toast.loading(`Mailing ${n}× ${item.name} to ${character.name}…`)
     try {
-      const r = await trackedInvoke<{ output: string }>(
-        "send_item_to_character",
-        {
-          args: {
-            characterName: character.name,
-            itemId: item.entry,
-            count: n,
-            subject,
-            body,
-          },
-        }
-      )
-      setResult(r.output.trim() || `Sent ${n}× ${item.name} to ${character.name}`)
+      await trackedInvoke<{ output: string }>("send_item_to_character", {
+        args: {
+          characterName: character.name,
+          itemId: item.entry,
+          count: n,
+          subject,
+          body,
+        },
+      })
+      toast.success(`Sent ${n}× ${item.name} to ${character.name}`, { id })
+      // Auto-close on success — the user can re-open the inventory
+      // entry if they want to send more. Keeping the dialog open after
+      // a successful send made it ambiguous whether a follow-up click
+      // would re-send or send a different item.
+      onClose()
     } catch (err) {
-      setError(String(err))
+      toast.error("Failed to send item", {
+        id,
+        description: typeof err === "string" ? err : String(err),
+      })
     } finally {
       setSending(false)
     }
@@ -540,17 +540,6 @@ function SendItemDialog({
               />
             </Field>
 
-            {result && (
-              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs text-emerald-700 dark:text-emerald-400">
-                ✓ {result}
-              </div>
-            )}
-            {error && (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-xs text-rose-600 dark:text-rose-400">
-                <WarningCircleIcon className="-mt-0.5 mr-1 inline-block size-3.5" />
-                {error}
-              </div>
-            )}
           </div>
         )}
 

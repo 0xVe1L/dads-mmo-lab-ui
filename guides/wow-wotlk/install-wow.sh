@@ -908,7 +908,7 @@ setup_eluna() {
     # Both live alongside this installer in guides/wow-wotlk/eluna-scripts/.
     local copied=0
     local missing=0
-    for script_name in dml_whisper.lua dml_addclass.lua dml_uninvite.lua; do
+    for script_name in dml_whisper.lua dml_addclass.lua dml_uninvite.lua dml_login.lua dml_gm.lua; do
         local src="$script_dir/eluna-scripts/$script_name"
         if [ -f "$src" ]; then
             cp "$src" "$lua_scripts_dir/$script_name"

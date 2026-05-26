@@ -573,6 +573,35 @@ pub fn get_user_party(player_guid: u64) -> Result<Vec<PartyMember>, String> {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BringOnlineArgs {
+    pub bot_name: String,
+    pub character_name: String,
+}
+
+/// Log an offline party bot back into the world under the user's
+/// account. Mechanism: `dml_login <player> <bot>` Eluna script runs
+/// `.playerbots bot login <bot>` from the player's session. The
+/// mod's post-login hook re-attaches the bot to the master's group
+/// automatically (it walks the existing GroupInviteOperation queue).
+///
+/// Used when the user has been logged out (inactivity kick, manual
+/// logout) and returns to find their party bots offline. Iterate
+/// from the frontend to bring multiple bots back without bundling
+/// a batch command — each call is fast and the per-bot result tells
+/// the user which ones failed if any do.
+#[tauri::command]
+pub async fn bring_bot_online(args: BringOnlineArgs) -> Result<BotActionResult, String> {
+    let cmd = format!(
+        "dml_login {} {}",
+        quote_if_needed(&args.character_name),
+        quote_if_needed(&args.bot_name)
+    );
+    let r = soap::execute_command(&cmd).await?;
+    Ok(BotActionResult { output: r.output })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KickBotArgs {
     pub bot_name: String,
 }

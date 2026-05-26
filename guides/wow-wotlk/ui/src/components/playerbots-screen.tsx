@@ -15,6 +15,7 @@ import {
   UsersThreeIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -232,10 +233,6 @@ export function PlayerbotsScreen() {
   const [levelDialogBot, setLevelDialogBot] = React.useState<Playerbot | null>(
     null
   )
-  const [actionToast, setActionToast] = React.useState<{
-    kind: "ok" | "err"
-    msg: string
-  } | null>(null)
 
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const canScrollDown = useCanScrollDown(scrollRef)
@@ -334,15 +331,19 @@ export function PlayerbotsScreen() {
     label: string,
     promise: Promise<{ output: string }>
   ) => {
+    const id = toast.loading(`${label}…`)
     try {
       const r = await promise
-      setActionToast({
-        kind: "ok",
-        msg: `✓ ${label}: ${r.output.trim() || "OK"}`,
+      toast.success(label, {
+        id,
+        description: r.output.trim() || undefined,
       })
       setOpenBotGuid(null)
     } catch (e) {
-      setActionToast({ kind: "err", msg: `${label} failed: ${String(e)}` })
+      toast.error(`${label} failed`, {
+        id,
+        description: typeof e === "string" ? e : String(e),
+      })
     }
   }
 
@@ -594,27 +595,6 @@ export function PlayerbotsScreen() {
           )}
         </div>
         <ScrollFade visible={canScrollDown} />
-        </div>
-      )}
-
-      {actionToast && (
-        <div
-          className={cn(
-            "rounded-md border p-3 text-xs",
-            actionToast.kind === "ok"
-              ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
-              : "border-rose-500/30 bg-rose-500/5 text-rose-600 dark:text-rose-400"
-          )}
-        >
-          <button
-            type="button"
-            onClick={() => setActionToast(null)}
-            className="float-right ml-2 text-muted-foreground hover:text-foreground"
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
-          {actionToast.msg}
         </div>
       )}
 

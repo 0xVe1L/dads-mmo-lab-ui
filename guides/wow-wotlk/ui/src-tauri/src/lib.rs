@@ -121,6 +121,7 @@ pub fn run() {
             playerbots::add_bot_to_party,
             playerbots::get_user_party,
             playerbots::kick_bot_from_party,
+            playerbots::bring_bot_online,
             talent_harvest::harvest_talent_builds,
             talent_dataset::build_talent_dataset,
             talent_trees::build_talent_trees,

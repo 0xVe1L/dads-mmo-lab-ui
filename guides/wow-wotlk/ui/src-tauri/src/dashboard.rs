@@ -181,9 +181,15 @@ pub fn get_character_paperdoll(guid: u64) -> Result<CharacterPaperdoll, String> 
 }
 
 // ── GM action commands ─────────────────────────────────────────────
-// All direct UPDATE statements; effective immediately for offline
-// characters, on-next-login for online. Frontend surfaces the
-// implication via the `online` flag returned above.
+// Two paths per action: offline characters get a direct UPDATE against
+// `acore_characters.characters` (effective immediately on next login,
+// which for an offline character is the next time they log in anyway);
+// online characters route through the `dml_gm_*` Eluna scripts so the
+// change applies to the live Player object instantly.
+//
+// The previous "effects on next login" warning in the dashboard is
+// gone — Eluna's Player:SetHealth / SetPower / SetCoinage /
+// ResurrectPlayer mutate the active Player state directly.
 
 fn run_update(sql: &str) -> Result<(), String> {
     let container = find_database_container()
@@ -201,52 +207,126 @@ fn run_update(sql: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Look up `(name, online)` for a guid in one query. Used by the GM
+/// commands to pick between Eluna (live) and SQL (offline) paths.
+fn fetch_name_and_online(guid: u64) -> Result<(String, bool), String> {
+    let container = find_database_container()
+        .ok_or_else(|| "ac-database container not found — is the server running?".to_string())?;
+    let sql = format!(
+        "SELECT name, online FROM acore_characters.characters WHERE guid = {guid};"
+    );
+    let out = std::process::Command::new("docker")
+        .args([
+            "exec", &container, "mysql", "-uroot", "-ppassword", "-N", "-B", "-e", &sql,
+        ])
+        .output()
+        .map_err(|e| format!("docker exec mysql: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "mysql query failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout
+        .lines()
+        .next()
+        .ok_or_else(|| format!("character {guid} not found"))?;
+    let parts: Vec<&str> = line.split('\t').collect();
+    if parts.len() < 2 {
+        return Err(format!("malformed row for {guid}"));
+    }
+    Ok((parts[0].trim().to_string(), parts[1].trim() == "1"))
+}
+
+/// SOAP-quote helper — wraps names with whitespace in double quotes.
+fn quote_if_needed(s: &str) -> String {
+    if s.chars().any(|c| c.is_whitespace()) {
+        format!("\"{}\"", s.replace('"', "\\\""))
+    } else {
+        s.to_string()
+    }
+}
+
 #[tauri::command]
-pub fn gm_set_money(guid: u64, copper: u64) -> Result<(), String> {
+pub async fn gm_set_money(guid: u64, copper: u64) -> Result<(), String> {
     // AC's money column is INT UNSIGNED — clamp to 32-bit max so we
     // don't write a value that the worldserver rejects.
     let clamped = copper.min(u32::MAX as u64);
-    run_update(&format!(
-        "UPDATE acore_characters.characters SET money = {clamped} WHERE guid = {guid};"
-    ))
+    let (name, online) = fetch_name_and_online(guid)?;
+    if online {
+        let cmd = format!("dml_gm_money {} {}", quote_if_needed(&name), clamped);
+        crate::soap::execute_command(&cmd).await?;
+        Ok(())
+    } else {
+        run_update(&format!(
+            "UPDATE acore_characters.characters SET money = {clamped} WHERE guid = {guid};"
+        ))
+    }
 }
 
 #[tauri::command]
-pub fn gm_set_health_pct(guid: u64, pct: u32) -> Result<(), String> {
+pub async fn gm_set_health_pct(guid: u64, pct: u32) -> Result<(), String> {
     let pct = pct.min(100);
-    run_update(&format!(
-        "UPDATE acore_characters.characters c \
-         LEFT JOIN acore_characters.character_stats s ON s.guid = c.guid \
-         SET c.health = CAST(COALESCE(s.maxhealth, c.health) * {pct} / 100 AS UNSIGNED) \
-         WHERE c.guid = {guid};"
-    ))
+    let (name, online) = fetch_name_and_online(guid)?;
+    if online {
+        let cmd = format!("dml_gm_health {} {}", quote_if_needed(&name), pct);
+        crate::soap::execute_command(&cmd).await?;
+        Ok(())
+    } else {
+        run_update(&format!(
+            "UPDATE acore_characters.characters c \
+             LEFT JOIN acore_characters.character_stats s ON s.guid = c.guid \
+             SET c.health = CAST(COALESCE(s.maxhealth, c.health) * {pct} / 100 AS UNSIGNED) \
+             WHERE c.guid = {guid};"
+        ))
+    }
 }
 
 #[tauri::command]
-pub fn gm_set_power_pct(guid: u64, power_index: u32, pct: u32) -> Result<(), String> {
+pub async fn gm_set_power_pct(guid: u64, power_index: u32, pct: u32) -> Result<(), String> {
     // Only powers 1..7 are valid; refuse anything else outright so we
     // never inject a wrong column name.
     if !(1..=7).contains(&power_index) {
         return Err(format!("invalid power_index {power_index}"));
     }
     let pct = pct.min(100);
-    let power_col = format!("power{power_index}");
-    let max_col = format!("maxpower{power_index}");
-    run_update(&format!(
-        "UPDATE acore_characters.characters c \
-         LEFT JOIN acore_characters.character_stats s ON s.guid = c.guid \
-         SET c.{power_col} = CAST(COALESCE(s.{max_col}, c.{power_col}) * {pct} / 100 AS UNSIGNED) \
-         WHERE c.guid = {guid};"
-    ))
+    let (name, online) = fetch_name_and_online(guid)?;
+    if online {
+        let cmd = format!(
+            "dml_gm_power {} {} {}",
+            quote_if_needed(&name),
+            power_index,
+            pct
+        );
+        crate::soap::execute_command(&cmd).await?;
+        Ok(())
+    } else {
+        let power_col = format!("power{power_index}");
+        let max_col = format!("maxpower{power_index}");
+        run_update(&format!(
+            "UPDATE acore_characters.characters c \
+             LEFT JOIN acore_characters.character_stats s ON s.guid = c.guid \
+             SET c.{power_col} = CAST(COALESCE(s.{max_col}, c.{power_col}) * {pct} / 100 AS UNSIGNED) \
+             WHERE c.guid = {guid};"
+        ))
+    }
 }
 
 #[tauri::command]
-pub fn gm_revive(guid: u64) -> Result<(), String> {
-    // Revive = full HP. AC also clears other death-related state when
-    // the player respawns in-world, but for an offline char setting
-    // health > 0 is enough — on next login the engine treats them as
-    // alive with the new HP value.
-    gm_set_health_pct(guid, 100)
+pub async fn gm_revive(guid: u64) -> Result<(), String> {
+    // For online characters Eluna's ResurrectPlayer clears death state
+    // AND restores HP in one packet. For offline characters, setting
+    // health > 0 directly is enough — the engine treats them as alive
+    // on next login.
+    let (name, online) = fetch_name_and_online(guid)?;
+    if online {
+        let cmd = format!("dml_gm_revive {}", quote_if_needed(&name));
+        crate::soap::execute_command(&cmd).await?;
+        Ok(())
+    } else {
+        gm_set_health_pct(guid, 100).await
+    }
 }
 
 /// Fetch a character's current talent allocations as a flat map

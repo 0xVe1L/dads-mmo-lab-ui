@@ -54,12 +54,12 @@ function buildNavNodes(_ahbotNeedsConfig: boolean): NavNode[] {
       title: "Bots",
       icon: <RobotIcon />,
       items: [
+        { title: "Player Bots", icon: <RobotIcon />, page: "playerbots" },
         {
-          title: "NPCs and Party Presets",
+          title: "Party Presets",
           icon: <UsersThreeIcon />,
           disabled: true,
         },
-        { title: "Player Bots", icon: <RobotIcon />, page: "playerbots" },
       ],
     },
   ]

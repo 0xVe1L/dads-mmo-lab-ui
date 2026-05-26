@@ -1,7 +1,9 @@
 import * as React from "react"
 import {
+  ArrowLeftIcon,
   MagnifyingGlassIcon,
   PaperPlaneTiltIcon,
+  PlugIcon,
   PlusIcon,
   UserCircleIcon,
   UserMinusIcon,
@@ -195,6 +197,9 @@ export function DashboardMyParty() {
               <FilledPartySlot
                 key={bot.guid}
                 bot={bot}
+                otherOfflineBots={bots.filter(
+                  (b) => !b.online && b.guid !== bot.guid
+                )}
                 playerName={selectedCharacter?.name ?? null}
                 onRefresh={() => void refresh()}
               />
@@ -297,16 +302,34 @@ function UserPartyHeader({
 
 function FilledPartySlot({
   bot,
+  otherOfflineBots,
   playerName,
   onRefresh,
 }: {
   bot: PartyMember
+  /** Other offline party members (excluding this bot). Drives the
+   *  Bring-Online submenu: if non-empty AND this bot is offline,
+   *  the action splits into a back/just-this/all submenu instead of
+   *  a one-tap action. */
+  otherOfflineBots: PartyMember[]
   playerName: string | null
-  /** Called after Kick / Teleport succeeds so the party list re-fetches. */
+  /** Called after Kick / Teleport / Bring-online succeeds so the
+   *  party list re-fetches. */
   onRefresh: () => void
 }) {
   const { openBotDetail } = useServerState()
   const [open, setOpen] = React.useState(false)
+  // Two-view popover: "main" lists the action set; "bring-online"
+  // is the disambiguation submenu shown when bringing this bot back
+  // and other offline bots exist that the user might also want to
+  // bring back in a single action.
+  const [view, setView] = React.useState<"main" | "bring-online">("main")
+  // Reset to the main view every time the popover closes so the next
+  // open starts fresh.
+  React.useEffect(() => {
+    if (!open) setView("main")
+  }, [open])
+
   const fullClass = CLASS_NAMES[bot.classId] ?? `#${bot.classId}`
   const shortClass = CLASS_SHORT_NAMES[bot.classId] ?? fullClass
   const raceName = RACE_NAMES[bot.race] ?? `#${bot.race}`
@@ -344,6 +367,60 @@ function FilledPartySlot({
         id,
         description: typeof e === "string" ? e : String(e),
       })
+    }
+  }
+  const bringOnlineOne = async (target: PartyMember) => {
+    if (!playerName) return
+    await trackedInvoke("bring_bot_online", {
+      args: { botName: target.name, characterName: playerName },
+    })
+  }
+  const bringOnlineJustThis = async () => {
+    setOpen(false)
+    if (!playerName) return
+    const id = toast.loading(`Bringing ${bot.name} online…`)
+    try {
+      await bringOnlineOne(bot)
+      toast.success(`${bot.name} coming online`, { id })
+      onRefresh()
+    } catch (e) {
+      toast.error("Bring-online failed", {
+        id,
+        description: typeof e === "string" ? e : String(e),
+      })
+    }
+  }
+  const bringOnlineAll = async () => {
+    setOpen(false)
+    if (!playerName) return
+    const targets = [bot, ...otherOfflineBots]
+    const id = toast.loading(`Bringing ${targets.length} bots online…`)
+    const failures: string[] = []
+    // Serial loop — addclass-style logins queue a GroupInviteOperation
+    // per bot, and racing those can confuse the post-login hook. A
+    // simple sequential loop is plenty fast for a 4-bot party.
+    for (const t of targets) {
+      try {
+        await bringOnlineOne(t)
+      } catch (e) {
+        failures.push(`${t.name}: ${typeof e === "string" ? e : String(e)}`)
+      }
+    }
+    if (failures.length === 0) {
+      toast.success(`${targets.length} bots coming online`, { id })
+    } else {
+      toast.warning(
+        `${targets.length - failures.length}/${targets.length} bots back online`,
+        { id, description: failures.join(" · ") }
+      )
+    }
+    onRefresh()
+  }
+  const onBringOnlineClick = () => {
+    if (otherOfflineBots.length === 0) {
+      void bringOnlineJustThis()
+    } else {
+      setView("bring-online")
     }
   }
 
@@ -399,34 +476,81 @@ function FilledPartySlot({
         className="w-64 p-2"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="space-y-0.5">
-          <PartySlotAction
-            icon={<MagnifyingGlassIcon className="size-4" />}
-            label="View details"
-            onClick={() => {
-              setOpen(false)
-              openBotDetail({
-                guid: bot.guid,
-                classId: bot.classId,
-                name: bot.name,
-              })
-            }}
-          />
-          <PartySlotAction
-            icon={<PaperPlaneTiltIcon className="size-4" />}
-            label="Teleport to me"
-            onClick={runTeleport}
-            disabled={!playerName}
-            tooltip={!playerName ? "Pick a character first" : undefined}
-          />
-          <PartySlotAction
-            icon={<UserMinusIcon className="size-4" />}
-            label="Kick from party"
-            onClick={runKick}
-          />
-        </div>
+        {view === "bring-online" ? (
+          <div className="space-y-0.5">
+            <BackHeader onBack={() => setView("main")} />
+            <PartySlotAction
+              icon={<PlugIcon className="size-4" />}
+              label={`Just ${bot.name}`}
+              onClick={() => void bringOnlineJustThis()}
+              disabled={!playerName}
+            />
+            <PartySlotAction
+              icon={<UsersThreeIcon className="size-4" />}
+              label={`All offline bots (${otherOfflineBots.length + 1})`}
+              onClick={() => void bringOnlineAll()}
+              disabled={!playerName}
+            />
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            <PartySlotAction
+              icon={<MagnifyingGlassIcon className="size-4" />}
+              label="View details"
+              onClick={() => {
+                setOpen(false)
+                openBotDetail({
+                  guid: bot.guid,
+                  classId: bot.classId,
+                  name: bot.name,
+                })
+              }}
+            />
+            {!bot.online && (
+              <PartySlotAction
+                icon={<PlugIcon className="size-4" />}
+                label="Bring online"
+                onClick={onBringOnlineClick}
+                disabled={!playerName}
+                tooltip={
+                  !playerName ? "Pick a character first" : undefined
+                }
+              />
+            )}
+            {bot.online && (
+              <PartySlotAction
+                icon={<PaperPlaneTiltIcon className="size-4" />}
+                label="Teleport to me"
+                onClick={runTeleport}
+                disabled={!playerName}
+                tooltip={!playerName ? "Pick a character first" : undefined}
+              />
+            )}
+            <PartySlotAction
+              icon={<UserMinusIcon className="size-4" />}
+              label="Kick from party"
+              onClick={runKick}
+            />
+          </div>
+        )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** Compact "back" header for popover submenus. Thinner row + smaller
+ *  text + darker background to make the "step backwards" affordance
+ *  obvious without stealing visual weight from the actions below. */
+function BackHeader({ onBack }: { onBack: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="flex w-full items-center gap-2 rounded bg-muted/60 px-2 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <ArrowLeftIcon className="size-3" />
+      <span>Back</span>
+    </button>
   )
 }
 

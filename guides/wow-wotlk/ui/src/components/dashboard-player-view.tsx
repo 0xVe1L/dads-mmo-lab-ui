@@ -18,6 +18,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { toast } from "sonner"
+
 import { ItemIconFramed } from "@/components/item-icon-framed"
 import { ItemTooltip } from "@/components/item-tooltip"
 import { TalentTree } from "@/components/talent-tree"
@@ -363,15 +365,10 @@ function CharacterStatusHeader({
         </div>
       </div>
 
-      {data.online && (
-        <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          <WarningCircleIcon className="mt-0.5 size-3.5 shrink-0" />
-          <span>
-            Character is logged into WoW — GM changes (HP, money, etc.)
-            will only take effect the next time they log in.
-          </span>
-        </div>
-      )}
+      {/* Previously: warning that GM changes only apply on next login.
+          Now the Tauri dispatch picks Eluna for online characters and
+          SQL for offline, so HP/power/money/revive are instant in
+          either case. Notice removed. */}
     </div>
   )
 }
@@ -601,15 +598,18 @@ function HpActions({
   onChanged: () => void
 }) {
   const [busy, setBusy] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const run = async (pct: number) => {
+  const run = async (pct: number, label: string) => {
     setBusy(true)
-    setError(null)
+    const id = toast.loading(`Setting ${data.name}'s health to ${label}…`)
     try {
       await trackedInvoke("gm_set_health_pct", { guid: data.guid, pct })
+      toast.success(`${data.name}'s health set to ${label}`, { id })
       onChanged()
     } catch (e) {
-      setError(typeof e === "string" ? e : String(e))
+      toast.error("Health change failed", {
+        id,
+        description: typeof e === "string" ? e : String(e),
+      })
     } finally {
       setBusy(false)
     }
@@ -618,14 +618,29 @@ function HpActions({
     <div className="space-y-2">
       <div className="text-sm font-medium">Health</div>
       <div className="grid grid-cols-3 gap-2">
-        <Button size="sm" variant="outline" onClick={() => run(100)} disabled={busy}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => run(100, "Full")}
+          disabled={busy}
+        >
           <FirstAidIcon className="size-3.5" />
           Full
         </Button>
-        <Button size="sm" variant="outline" onClick={() => run(50)} disabled={busy}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => run(50, "50%")}
+          disabled={busy}
+        >
           50%
         </Button>
-        <Button size="sm" variant="outline" onClick={() => run(25)} disabled={busy}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => run(25, "25%")}
+          disabled={busy}
+        >
           25%
         </Button>
       </div>
@@ -633,14 +648,13 @@ function HpActions({
         <Button
           size="sm"
           className="w-full"
-          onClick={() => run(100)}
+          onClick={() => run(100, "Full (revive)")}
           disabled={busy}
         >
           <HeartIcon className="size-3.5" weight="fill" />
           Revive
         </Button>
       )}
-      {error && <ErrorRow message={error} />}
     </div>
   )
 }
@@ -655,39 +669,57 @@ function ResourceActions({
   onChanged: () => void
 }) {
   const [busy, setBusy] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
   const powerIndex = POWER_INDEX_FROM_KIND[powerKind]
-  const run = async (pct: number) => {
+  const powerLabel = POWER_LABELS[powerKind]
+  const run = async (pct: number, label: string) => {
     setBusy(true)
-    setError(null)
+    const id = toast.loading(`Setting ${data.name}'s ${powerLabel} to ${label}…`)
     try {
       await trackedInvoke("gm_set_power_pct", {
         guid: data.guid,
         powerIndex,
         pct,
       })
+      toast.success(`${data.name}'s ${powerLabel} set to ${label}`, { id })
       onChanged()
     } catch (e) {
-      setError(typeof e === "string" ? e : String(e))
+      toast.error(`${powerLabel} change failed`, {
+        id,
+        description: typeof e === "string" ? e : String(e),
+      })
     } finally {
       setBusy(false)
     }
   }
   return (
     <div className="space-y-2">
-      <div className="text-sm font-medium">{POWER_LABELS[powerKind]}</div>
+      <div className="text-sm font-medium">{powerLabel}</div>
       <div className="grid grid-cols-3 gap-2">
-        <Button size="sm" variant="outline" onClick={() => run(100)} disabled={busy}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => run(100, "Full")}
+          disabled={busy}
+        >
           Full
         </Button>
-        <Button size="sm" variant="outline" onClick={() => run(50)} disabled={busy}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => run(50, "50%")}
+          disabled={busy}
+        >
           50%
         </Button>
-        <Button size="sm" variant="outline" onClick={() => run(0)} disabled={busy}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => run(0, "Empty")}
+          disabled={busy}
+        >
           Empty
         </Button>
       </div>
-      {error && <ErrorRow message={error} />}
     </div>
   )
 }
@@ -700,19 +732,22 @@ function MoneyActions({
   onChanged: () => void
 }) {
   const [busy, setBusy] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
   const [setGold, setSetGold] = React.useState(String(Math.floor(data.money / 10000)))
   const [addGold, setAddGold] = React.useState("100")
 
   const applySet = async () => {
     const g = Math.max(0, parseInt(setGold, 10) || 0)
     setBusy(true)
-    setError(null)
+    const id = toast.loading(`Setting ${data.name}'s money to ${g}g…`)
     try {
       await trackedInvoke("gm_set_money", { guid: data.guid, copper: g * 10000 })
+      toast.success(`${data.name}'s money set to ${g}g`, { id })
       onChanged()
     } catch (e) {
-      setError(typeof e === "string" ? e : String(e))
+      toast.error("Money change failed", {
+        id,
+        description: typeof e === "string" ? e : String(e),
+      })
     } finally {
       setBusy(false)
     }
@@ -720,13 +755,21 @@ function MoneyActions({
   const applyAdd = async () => {
     const g = parseInt(addGold, 10) || 0
     const newCopper = Math.max(0, data.money + g * 10000)
-    setBusy(true)
-    setError(null)
+    // Verb depends on sign: positive = Sent, negative = Took. 0 is a
+    // no-op but the user still gets a confirmation that nothing
+    // changed rather than silent failure.
+    const verb = g > 0 ? "Sent" : g < 0 ? "Took" : "Adjusted"
+    const amount = Math.abs(g)
+    const id = toast.loading(`${verb} ${amount}g ${g >= 0 ? "to" : "from"} ${data.name}…`)
     try {
       await trackedInvoke("gm_set_money", { guid: data.guid, copper: newCopper })
+      toast.success(`${verb} ${amount}g ${g >= 0 ? "to" : "from"} ${data.name}`, { id })
       onChanged()
     } catch (e) {
-      setError(typeof e === "string" ? e : String(e))
+      toast.error("Money change failed", {
+        id,
+        description: typeof e === "string" ? e : String(e),
+      })
     } finally {
       setBusy(false)
     }
@@ -773,16 +816,6 @@ function MoneyActions({
           </Button>
         </div>
       </div>
-
-      {error && <ErrorRow message={error} />}
-    </div>
-  )
-}
-
-function ErrorRow({ message }: { message: string }) {
-  return (
-    <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-2 text-xs text-rose-700 dark:text-rose-300">
-      {message}
     </div>
   )
 }
