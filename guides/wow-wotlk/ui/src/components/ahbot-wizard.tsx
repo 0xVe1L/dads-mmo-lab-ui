@@ -78,27 +78,22 @@ export function AhBotWizard({
 
   // Derive the currently-configured AH Bot character from the active
   // mod_ahbot.conf so we can pre-select it in the dropdown.
-  //  - If `GUID` is set (>0), that's the specific character.
-  //  - Else if `Account` is set, we fall back to the FIRST character on
-  //    that account — which is what the AH Bot module itself does when
-  //    GUID=0 (it uses every character on the account, but we have to
-  //    pick one to highlight in the picker).
-  //  - Else: no current character (fresh / mis-configured install).
+  // mod-ah-bot-plus's schema is GUIDs-only (no Account field): the value
+  // is either `0` (placeholder, bot inert) or a single character GUID.
+  // The conf can technically hold a comma-separated list, but the install
+  // bootstrap only ever writes one GUID, so we read the first numeric
+  // token to be robust against a hand-edited multi-bot conf.
   const currentGuid: number | null = React.useMemo(() => {
-    const ahbot = installedModules.find((m) => m.key === "mod-ah-bot")
+    const ahbot = installedModules.find((m) => m.key === "mod-ah-bot-plus")
     if (!ahbot) return null
-    const guidStr = ahbot.conf["AuctionHouseBot.GUID"]
-    const acctStr = ahbot.conf["AuctionHouseBot.Account"]
-    const guid = guidStr ? parseInt(guidStr, 10) : 0
-    if (guid > 0) return guid
-    const acct = acctStr ? parseInt(acctStr, 10) : 0
-    if (acct > 0) {
-      // GUID=0 + Account=X → first char on that account is the "current" pick.
-      const first = characters.find((c) => c.account === acct)
-      return first?.guid ?? null
-    }
-    return null
-  }, [installedModules, characters])
+    const raw = ahbot.conf["AuctionHouseBot.GUIDs"] ?? ""
+    const first = raw
+      .split(",")
+      .map((s) => s.trim())
+      .find((s) => /^\d+$/.test(s))
+    const guid = first ? parseInt(first, 10) : 0
+    return guid > 0 ? guid : null
+  }, [installedModules])
 
   const doRefresh = React.useCallback(async () => {
     setRefreshing(true)
@@ -148,7 +143,7 @@ export function AhBotWizard({
       // so the user lands on the server-control screen. Closing the
       // dialog before that transition feels right — no need to wait.
       onOpenChange(false)
-      await configureAhbotCharacter(selectedChar.account, selectedChar.guid)
+      await configureAhbotCharacter(selectedChar.guid)
     } catch (err) {
       // Re-open dialog on failure so the user sees the issue.
       setApplying(false)

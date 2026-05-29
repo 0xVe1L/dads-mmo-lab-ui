@@ -46,7 +46,7 @@ function buildNavNodes(_ahbotNeedsConfig: boolean): NavNode[] {
         // Routed internally as `inventory`; display name is "Item Database".
         { title: "Item Database", icon: <DatabaseIcon />, page: "inventory" },
         { title: "Gear Library", icon: <SwordIcon />, disabled: true },
-        { title: "Auction House", icon: <GavelIcon />, disabled: true },
+        { title: "Auction House", icon: <GavelIcon />, page: "auctionHouse" },
       ],
     },
     {

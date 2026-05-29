@@ -93,7 +93,7 @@ section_end()   { echo "::DML::SECTION::END::"; }
 # Filenames of .conf.dist files are discovered at install time (each
 # module owns the naming convention), so no second column needed.
 declare -a USER_MODULE_REGISTRY=(
-    "mod-ah-bot|https://github.com/azerothcore/mod-ah-bot.git"
+    "mod-ah-bot-plus|https://github.com/NathanHandley/mod-ah-bot-plus.git"
     "mod-solocraft|https://github.com/azerothcore/mod-solocraft.git"
     "mod-aoe-loot|https://github.com/azerothcore/mod-aoe-loot.git"
     "mod-learn-spells|https://github.com/azerothcore/mod-learn-spells.git"
@@ -163,23 +163,63 @@ apply_module_overrides() {
     cp "$conf_dist" "$conf_active"
 
     case "$key" in
-        mod-ah-bot)
-            # Onboarding knobs (Phase 1 in MODULES_PLAN.md). Unset vars
-            # mean "leave the .conf.dist default", so we only `conf_set`
-            # the ones the UI actually passed.
-            [ -n "$DML_MOD_AHBOT_ITEMS_PER_CYCLE" ]      && conf_set "$conf_active" "AuctionHouseBot.ItemsPerCycle"      "$DML_MOD_AHBOT_ITEMS_PER_CYCLE"
-            [ -n "$DML_MOD_AHBOT_ELAPSING_TIME_CLASS" ]  && conf_set "$conf_active" "AuctionHouseBot.ElapsingTimeClass"  "$DML_MOD_AHBOT_ELAPSING_TIME_CLASS"
-            [ -n "$DML_MOD_AHBOT_ENABLE_BUYER" ]         && conf_set "$conf_active" "AuctionHouseBot.EnableBuyer"        "$DML_MOD_AHBOT_ENABLE_BUYER"
-            [ -n "$DML_MOD_AHBOT_VENDOR_ITEMS" ]         && conf_set "$conf_active" "AuctionHouseBot.VendorItems"        "$DML_MOD_AHBOT_VENDOR_ITEMS"
-            [ -n "$DML_MOD_AHBOT_PROFESSION_ITEMS" ]     && conf_set "$conf_active" "AuctionHouseBot.ProfessionItems"    "$DML_MOD_AHBOT_PROFESSION_ITEMS"
-            # AH Bot character is deferred to the post-install wizard —
-            # leave Account/GUID at 0 so the bot loads but stays inert
-            # until the user creates the character and runs that wizard.
-            conf_set "$conf_active" "AuctionHouseBot.Account"       "0"
-            conf_set "$conf_active" "AuctionHouseBot.GUID"          "0"
-            conf_set "$conf_active" "AuctionHouseBot.GUIDs"         "\"0\""
-            conf_set "$conf_active" "AuctionHouseBot.EnableSeller"  "0"
-            print_info "AH Bot: bot character setup deferred — finish via Modules page after first login"
+        mod-ah-bot-plus)
+            # Onboarding knobs mapped to mod-ah-bot-plus's schema.
+            # Plus uses different field names + a boolean style ("true"/
+            # "false" lowercase rather than 1/0). Unset env vars leave
+            # the .conf.dist default in place.
+            [ -n "$DML_MOD_AHBOT_ITEMS_PER_CYCLE" ] && \
+                conf_set "$conf_active" "AuctionHouseBot.ItemsPerCycle" "$DML_MOD_AHBOT_ITEMS_PER_CYCLE"
+
+            # Map our wizard's three-way enum (short/medium/long) to
+            # the new (min,max) seconds pair. Defaults match upstream's
+            # .conf.dist medium band.
+            if [ -n "$DML_MOD_AHBOT_ELAPSING_TIME_CLASS" ]; then
+                local listing_min listing_max
+                case "$DML_MOD_AHBOT_ELAPSING_TIME_CLASS" in
+                    2)  listing_min=600    listing_max=3600   ;;  # 10min-1hr (short)
+                    0)  listing_min=86400  listing_max=172800 ;;  # 1d-2d   (long)
+                    *)  listing_min=3600   listing_max=86400  ;;  # 1hr-24hr (medium / default)
+                esac
+                conf_set "$conf_active" "AuctionHouseBot.ListingExpireTimeInSecondsMin" "$listing_min"
+                conf_set "$conf_active" "AuctionHouseBot.ListingExpireTimeInSecondsMax" "$listing_max"
+            fi
+
+            # Buyer is now under `Buyer.Enabled` and takes a real bool.
+            # Translate our 1/0 env from the wizard.
+            if [ -n "$DML_MOD_AHBOT_ENABLE_BUYER" ]; then
+                local buyer_val=false
+                [ "$DML_MOD_AHBOT_ENABLE_BUYER" = "1" ] && buyer_val=true
+                conf_set "$conf_active" "AuctionHouseBot.Buyer.Enabled" "$buyer_val"
+            fi
+
+            # Profession materials now map to a family of AdvancedPricing
+            # toggles per TradeGood subcategory. ON = include those item
+            # classes in the bot's pricing model so they show up on the
+            # AH. OFF leaves the .conf.dist defaults (all true) intact.
+            if [ -n "$DML_MOD_AHBOT_PROFESSION_ITEMS" ]; then
+                local prof_val=false
+                [ "$DML_MOD_AHBOT_PROFESSION_ITEMS" = "1" ] && prof_val=true
+                conf_set "$conf_active" "AuctionHouseBot.AdvancedPricing.TradeGood.Cloth.Enabled"      "$prof_val"
+                conf_set "$conf_active" "AuctionHouseBot.AdvancedPricing.TradeGood.Herb.Enabled"       "$prof_val"
+                conf_set "$conf_active" "AuctionHouseBot.AdvancedPricing.TradeGood.MetalStone.Enabled" "$prof_val"
+                conf_set "$conf_active" "AuctionHouseBot.AdvancedPricing.TradeGood.Leather.Enabled"    "$prof_val"
+                conf_set "$conf_active" "AuctionHouseBot.AdvancedPricing.TradeGood.Enchanting.Enabled" "$prof_val"
+                conf_set "$conf_active" "AuctionHouseBot.AdvancedPricing.TradeGood.Elemental.Enabled"  "$prof_val"
+            fi
+
+            # Note: plus drops the old `VendorItems` toggle — vendor
+            # goods are handled via the new mod's Blizzlike rules. The
+            # wizard no longer exposes that knob.
+
+            # Bot character is wired up after worldserver bootstrap by
+            # bootstrap_accounts_and_ahbot — it writes the actual GUID
+            # into AuctionHouseBot.GUIDs and flips EnableSeller to true.
+            # Until then leave seller off so the bot loads but stays
+            # inert.
+            conf_set "$conf_active" "AuctionHouseBot.GUIDs"        "0"
+            conf_set "$conf_active" "AuctionHouseBot.EnableSeller" "false"
+            print_info "AH Bot: bot character will be wired up after install."
             ;;
         mod-individual-progression)
             if [ "${DML_MOD_IP_AUTHENTIC_DIFFICULTY:-0}" = "1" ]; then
@@ -952,12 +992,12 @@ wait_for_server() {
 #      gmlevel 3 in account_access.
 #   3. Generates a random password for an internal AHBOT account, creates
 #      it the same way.
-#   4. SQL INSERTs one minimal character row on the AHBOT account — AHB
-#      needs at least one character row to exist for the bot's gBotsId
-#      lookup (see modules/mod-ah-bot/src/AuctionHouseBotWorldScript.cpp).
-#   5. Rewrites mod_ahbot.conf with the new account_id and
-#      EnableSeller=1 — the bot becomes active on next worldserver
-#      restart.
+#   4. SQL INSERTs one minimal character row on the AHBOT account —
+#      mod-ah-bot-plus needs a real character GUID to impersonate as
+#      the seller (see modules/mod-ah-bot-plus/src/).
+#   5. Rewrites mod_ahbot.conf with the new character GUID
+#      (AuctionHouseBot.GUIDs) and EnableSeller=true — the bot becomes
+#      active on next worldserver restart.
 #   6. Soft-restarts the worldserver so the conf change takes effect.
 
 # Helper: docker exec into ac-database and run a SQL statement.
@@ -1110,19 +1150,21 @@ bootstrap_accounts_and_ahbot() {
         print_success "Created AH Bot character: Ahbotseller (guid ${seller_guid}) on account ${ahbot_id}"
     fi
 
-    # ── Rewrite mod_ahbot.conf with the new account_id ────────────
+    # ── Rewrite mod_ahbot.conf with the new bot character GUID ────
+    # mod-ah-bot-plus only needs the character GUID — there's no
+    # Account field anymore. The bot impersonates whatever GUIDs are
+    # listed; account ownership is implicit. Booleans are lowercase
+    # "true"/"false" in the plus schema.
     local conf="$SERVER_DIR/env/dist/etc/modules/mod_ahbot.conf"
     if [ ! -f "$conf" ]; then
         print_warning "mod_ahbot.conf not found at $conf — AH Bot won't activate until reconfigured"
         return 0
     fi
     sed -i -E \
-        -e "s|^AuctionHouseBot\.Account[[:space:]]*=.*|AuctionHouseBot.Account = ${ahbot_id}|" \
-        -e "s|^AuctionHouseBot\.GUID[[:space:]]*=.*|AuctionHouseBot.GUID = 0|" \
-        -e "s|^AuctionHouseBot\.GUIDs[[:space:]]*=.*|AuctionHouseBot.GUIDs = \"0\"|" \
-        -e "s|^AuctionHouseBot\.EnableSeller[[:space:]]*=.*|AuctionHouseBot.EnableSeller = 1|" \
+        -e "s|^AuctionHouseBot\.GUIDs[[:space:]]*=.*|AuctionHouseBot.GUIDs = ${seller_guid}|" \
+        -e "s|^AuctionHouseBot\.EnableSeller[[:space:]]*=.*|AuctionHouseBot.EnableSeller = true|" \
         "$conf"
-    print_success "Configured mod_ahbot.conf (Account=${ahbot_id}, EnableSeller=1)"
+    print_success "Configured mod_ahbot.conf (GUIDs=${seller_guid}, EnableSeller=true)"
 
     # ── Restart worldserver so AHB picks up the new conf ──────────
     print_info "Restarting worldserver to activate AH Bot..."

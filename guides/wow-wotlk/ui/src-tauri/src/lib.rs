@@ -110,6 +110,8 @@ pub fn run() {
             modules::list_installed_modules,
             modules::list_characters,
             modules::configure_ahbot_character,
+            modules::update_module_conf,
+            modules::reload_ahbot,
             wow_client::get_wow_client_state,
             wow_client::set_wow_directory,
             wow_client::clear_wow_directory,

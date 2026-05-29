@@ -15,6 +15,7 @@ import { InventoryScreen } from "@/components/inventory-screen"
 import { PlayerbotsScreen } from "@/components/playerbots-screen"
 import { ServerControlScreen } from "@/components/server-control-screen"
 import { SettingsScreen } from "@/components/settings-screen"
+import { AuctionHouseScreen } from "@/components/auction-house-screen"
 import { TeleportScreen } from "@/components/teleport-screen"
 import { UninstallSuccessDialog } from "@/components/uninstall-success-dialog"
 import {
@@ -83,6 +84,7 @@ function AppShell() {
     !showInstallScreen && !showServerActionScreen && installed
   const showTeleport = isPagedView && activePage === "teleport"
   const showInventory = isPagedView && activePage === "inventory"
+  const showAuctionHouse = isPagedView && activePage === "auctionHouse"
   const showPlayerbots = isPagedView && activePage === "playerbots"
   const showBotDetail = isPagedView && activePage === "botDetail"
   const showSettings = isPagedView && activePage === "settings"
@@ -102,6 +104,8 @@ function AppShell() {
     mainContent = <TeleportScreen />
   } else if (showInventory) {
     mainContent = <InventoryScreen />
+  } else if (showAuctionHouse) {
+    mainContent = <AuctionHouseScreen />
   } else if (showPlayerbots) {
     mainContent = <PlayerbotsScreen />
   } else if (showBotDetail) {

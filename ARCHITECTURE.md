@@ -4,6 +4,33 @@
 
 ---
 
+## 📍 Status as of 2026-05-29
+
+**Phases 1–4 have shipped.** The bulk of this document is the original design rationale, preserved because the choices made then still hold; treat the **§6 Phasing** section as historical record rather than a current roadmap.
+
+What's live today:
+- ✅ **Phase 1** (big button) — install/start/stop work end-to-end from the app
+- ✅ **Phase 2** (read-only awareness) — character lists, inventory, equipped gear, talent trees
+- ✅ **Phase 3** (SOAP online) — full GM command surface; SOAP enabled via the install's compose override, creds persisted in `~/.config/dads-mmo-lab/settings.json` after install
+- ✅ **Phase 4** (persistence) — `.dmlbak` character backup/restore with transactional staging schema; per-module config UI (Auction House page covers `mod-ah-bot-plus`'s 440+ knobs); Eluna whisper relay (`dml_*.lua`) for player-context SOAP commands
+- 🟡 **Phase 5** (polish + distribution) — AppImage builds native on Deck, Steam non-Steam integration with bundled grid art, ConsolePortLK addon installer. Windows MSI deferred.
+
+**Current sprint priorities** live in [`WorkGoals_5-27-2026.md`](./WorkGoals_5-27-2026.md):
+1. OTA updates with transactional migrations (foundational — gates the rest)
+2. `mod-ah-bot` → `mod-ah-bot-plus` migration for *existing* installs (the swap for *new* installs has shipped)
+3. Module config UI v2 (per-module forms + raw editor)
+4. Uninstall + SteamOS recovery surface
+5. New curated modules (`mod-npc-enchanter`, `mod-dungeon-scale`, etc.)
+
+Cross-references:
+- [`STEAMOS_AND_MULTI_SERVER_AUDIT.md`](./STEAMOS_AND_MULTI_SERVER_AUDIT.md) — known SteamOS-specific risks (podman shim, port collisions, vanilla launcher reliability)
+- [`MODULES_PLAN.md`](./MODULES_PLAN.md) — module integration phasing
+- [`guides/wow-wotlk/ui/CLAUDE.md`](./guides/wow-wotlk/ui/CLAUDE.md) — the UI's current file map, conventions, and pages
+
+The state model in §4 below has also drifted — UI state now lives at `~/.config/dads-mmo-lab/` (XDG-compliant, single `settings.json`) rather than the `~/.dads-mmo-lab-ui/` tree originally proposed. Per-install metadata lives under `<install>/.dads-mmo-lab/install.json`.
+
+---
+
 ## 1. Stack
 
 - **Shell**: Tauri 2 (Rust core + system WebView).

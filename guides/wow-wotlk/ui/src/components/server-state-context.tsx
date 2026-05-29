@@ -42,10 +42,11 @@ export type UninstallOptions = {
  */
 export type OnboardingAhBotConfig = {
   itemsPerCycle?: number
-  /** 0 = long (1-3d), 1 = medium (1-24h), 2 = short (10-60min) per AC enum */
+  /** 0 = long (1-3d), 1 = medium (1-24h), 2 = short (10-60min).
+   * Bash side maps this to mod-ah-bot-plus's
+   * ListingExpireTimeInSecondsMin/Max pair. */
   elapsingTimeClass?: 0 | 1 | 2
   enableBuyer?: boolean
-  vendorItems?: boolean
   professionItems?: boolean
 }
 
@@ -70,7 +71,7 @@ export type OnboardingChoices = {
    * Used by the "Finish setup" banner on the dashboard when a crash
    * left an install partial. */
   resume?: boolean
-  /** Module keys to clone + compile in (e.g. `["mod-ah-bot", "mod-solocraft"]`). */
+  /** Module keys to clone + compile in (e.g. `["mod-ah-bot-plus", "mod-solocraft"]`). */
   modules?: string[]
   /** Per-module config — only ones the user actually went through a config step for. */
   moduleConfig?: OnboardingModuleConfig
@@ -209,7 +210,7 @@ type ConsoleState = {
 // ── Modules-page types ──────────────────────────────────────────────────
 
 export type InstalledModule = {
-  /** Repo key e.g. `mod-ah-bot`. */
+  /** Repo key e.g. `mod-ah-bot-plus`. */
   key: string
   /** Display name e.g. "Auction House Bot". */
   name: string
@@ -267,6 +268,7 @@ export type ActivePage =
   | "modules"
   | "teleport"
   | "inventory"
+  | "auctionHouse"
   | "playerbots"
   | "botDetail"
   | "settings"
@@ -339,7 +341,7 @@ type ServerState = {
   characters: GameCharacter[]
   refreshCharacters: () => Promise<void>
   /** Apply AH Bot character config + restart worldserver. */
-  configureAhbotCharacter: (account: number, guid: number) => Promise<void>
+  configureAhbotCharacter: (guid: number) => Promise<void>
 
   // Globally-selected "main" character. Surfaced via the sidebar's
   // GlobalCharacterCard and consumed by Inventory/Teleport (and any
@@ -898,23 +900,19 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
     )
   }, [selectedCharacterGuid, characters])
 
-  // Derive whether AH Bot is installed but unconfigured. AH Bot's conf
-  // ships with Account=0 / GUID=0 / EnableSeller=0 from
-  // install-wow-ui.sh as a placeholder. The bootstrap step (or the
-  // post-install wizard) sets Account=<id> and EnableSeller=1.
-  //
-  // IMPORTANT: GUID=0 alone is NOT a "not configured" signal — per AHB
-  // source (AuctionHouseBotWorldScript.cpp:35), GUID=0 with Account>0
-  // means "use EVERY character on the account", which is exactly what
-  // bootstrap_accounts_and_ahbot configures. The real signal is
-  // Account=0 OR EnableSeller!=1. Earlier code that also tripped on
-  // GUID=0 flagged the working state as broken.
+  // Derive whether AH Bot is installed but unconfigured. mod-ah-bot-plus
+  // drops the old `Account`/`GUID` (singular) fields and uses only
+  // `GUIDs` (the bot's character GUID) plus a `true`/`false` string
+  // for EnableSeller. install-wow-ui.sh writes both as placeholders
+  // (GUIDs=0, EnableSeller=false) and `bootstrap_accounts_and_ahbot`
+  // sets them to the real GUID + true once the AHBOT character exists.
+  // Anything else means the bot is loaded but inert.
   const ahbotNeedsConfig = React.useMemo(() => {
-    const ahbot = installedModules.find((m) => m.key === "mod-ah-bot")
+    const ahbot = installedModules.find((m) => m.key === "mod-ah-bot-plus")
     if (!ahbot) return false
-    const account = ahbot.conf["AuctionHouseBot.Account"] ?? "0"
-    const enableSeller = ahbot.conf["AuctionHouseBot.EnableSeller"] ?? "0"
-    return account === "0" || enableSeller !== "1"
+    const guids = ahbot.conf["AuctionHouseBot.GUIDs"] ?? "0"
+    const enableSeller = ahbot.conf["AuctionHouseBot.EnableSeller"] ?? "false"
+    return guids === "0" || enableSeller.toLowerCase() !== "true"
   }, [installedModules])
 
   // Subscribe to install:* events for the whole app lifetime using the
@@ -1401,9 +1399,9 @@ export function ServerStateProvider({ children }: { children: React.ReactNode })
 
   const restartServerInternal = restartServer
   const configureAhbotCharacter = React.useCallback(
-    async (account: number, guid: number) => {
+    async (guid: number) => {
       if (!isTauri()) return
-      await trackedInvoke("configure_ahbot_character", { account, guid })
+      await trackedInvoke("configure_ahbot_character", { guid })
       // Refresh modules so ahbotNeedsConfig flips to false straight away,
       // before the restart even starts streaming output.
       await refreshInstalledModules()

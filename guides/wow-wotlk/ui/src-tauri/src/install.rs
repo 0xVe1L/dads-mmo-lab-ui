@@ -38,9 +38,14 @@ pub struct DetectionResult {
 #[serde(rename_all = "camelCase")]
 pub struct AhBotConfig {
     pub items_per_cycle: Option<u32>,
-    pub elapsing_time_class: Option<u8>, // 0=long, 1=medium, 2=short per AC enum
+    /// 0 = long, 1 = medium, 2 = short. Bash side translates this into
+    /// mod-ah-bot-plus's `ListingExpireTimeInSecondsMin/Max` pair.
+    pub elapsing_time_class: Option<u8>,
     pub enable_buyer: Option<bool>,
-    pub vendor_items: Option<bool>,
+    /// Toggles the six `AdvancedPricing.TradeGood.*.Enabled` flags
+    /// (Cloth/Herb/MetalStone/Leather/Enchanting/Elemental) together
+    /// since onboarding treats them as one "include profession mats"
+    /// switch. Granular per-tradegood toggles live on the AH page.
     pub profession_items: Option<bool>,
 }
 
@@ -82,7 +87,7 @@ pub struct InstallRequest {
     /// recover from a crash that interrupted a near-finished install.
     #[serde(default)]
     pub resume: bool,
-    /// Module keys to install (e.g. `["mod-ah-bot", "mod-solocraft"]`).
+    /// Module keys to install (e.g. `["mod-ah-bot-plus", "mod-solocraft"]`).
     /// Translated to `DML_MODULES_ADD` (comma-separated) before spawn.
     /// Ignored when `resume=true` (modules are already cloned + built).
     #[serde(default)]
@@ -434,9 +439,6 @@ pub async fn start_install(
         }
         if let Some(v) = ah.enable_buyer {
             cmd.env("DML_MOD_AHBOT_ENABLE_BUYER", if v { "1" } else { "0" });
-        }
-        if let Some(v) = ah.vendor_items {
-            cmd.env("DML_MOD_AHBOT_VENDOR_ITEMS", if v { "1" } else { "0" });
         }
         if let Some(v) = ah.profession_items {
             cmd.env("DML_MOD_AHBOT_PROFESSION_ITEMS", if v { "1" } else { "0" });

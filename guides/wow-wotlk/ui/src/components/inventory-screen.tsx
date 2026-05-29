@@ -2,6 +2,7 @@ import * as React from "react"
 import {
   ArrowSquareOutIcon,
   DatabaseIcon,
+  GavelIcon,
   GearIcon,
   GearSixIcon,
   MagnifyingGlassIcon,
@@ -25,6 +26,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -45,6 +47,11 @@ import {
   useServerState,
   type GameCharacter,
 } from "@/components/server-state-context"
+import {
+  addExclude,
+  isExcluded,
+  removeExclude,
+} from "@/lib/ahbot-exclude"
 import { trackedInvoke, isTauri } from "@/lib/tauri"
 import { cn } from "@/lib/utils"
 
@@ -139,7 +146,66 @@ export function InventoryScreen() {
   // bot-targeted flows keep their own dedicated CharacterPickers.
   // iconMap is read from context (loaded once at app start) so
   // navigating away + back doesn't reload the ~1MB icon JSON.
-  const { selectedCharacter: character, iconMap } = useServerState()
+  const {
+    selectedCharacter: character,
+    iconMap,
+    installedModules,
+    refreshInstalledModules,
+  } = useServerState()
+
+  // ── AH Bot exclude-list plumbing ────────────────────────────────────
+  // The gavel on each item tile lets the user add/remove that item
+  // from `AuctionHouseBot.DisabledCustomItemIDs`. The current list is
+  // pulled live from the installed-modules conf so cards reflect any
+  // out-of-band changes (e.g., the Auction House page's Advanced tab
+  // also writing the same field).
+  const ahbotMod = React.useMemo(
+    () => installedModules.find((m) => m.key === "mod-ah-bot-plus"),
+    [installedModules]
+  )
+  const excludeList =
+    ahbotMod?.conf["AuctionHouseBot.DisabledCustomItemIDs"] ?? ""
+  const [gavelBusyEntry, setGavelBusyEntry] = React.useState<number | null>(null)
+
+  const toggleExclude = React.useCallback(
+    async (entry: number, excluded: boolean) => {
+      if (!ahbotMod) {
+        toast.error("Auction House Bot not installed")
+        return
+      }
+      setGavelBusyEntry(entry)
+      try {
+        const next = excluded
+          ? removeExclude(excludeList, entry)
+          : addExclude(excludeList, entry)
+        if (next === excludeList) {
+          // No-op (already in/out — race with another writer). Silent.
+          return
+        }
+        if (isTauri()) {
+          await trackedInvoke("update_module_conf", {
+            moduleKey: "mod-ah-bot-plus",
+            fields: { "AuctionHouseBot.DisabledCustomItemIDs": next },
+          })
+          await trackedInvoke<string>("reload_ahbot")
+        }
+        await refreshInstalledModules()
+        toast.success(
+          excluded ? "Re-included in AH Bot listings" : "Excluded from AH Bot",
+          {
+            description: excluded
+              ? `Item ${entry} will list again on the next bot cycle.`
+              : `Item ${entry} won't be listed by the bot anymore.`,
+          }
+        )
+      } catch (err) {
+        toast.error("Couldn't update AH exclusion", { description: String(err) })
+      } finally {
+        setGavelBusyEntry(null)
+      }
+    },
+    [ahbotMod, excludeList, refreshInstalledModules]
+  )
 
   const [query, setQuery] = React.useState("")
   const [classFilter, setClassFilter] = React.useState("0")
@@ -343,6 +409,12 @@ export function InventoryScreen() {
                 iconMap={iconMap}
                 onSend={() => setSendingFor(item)}
                 canSend={character != null}
+                excluded={isExcluded(excludeList, item.entry)}
+                ahbotAvailable={ahbotMod != null}
+                gavelBusy={gavelBusyEntry === item.entry}
+                onToggleExclude={(excluded) =>
+                  toggleExclude(item.entry, excluded)
+                }
               />
             ))}
           </div>
@@ -368,11 +440,22 @@ function ItemTile({
   iconMap,
   onSend,
   canSend,
+  excluded,
+  ahbotAvailable,
+  gavelBusy,
+  onToggleExclude,
 }: {
   item: ItemSummary
   iconMap: Record<string, string>
   onSend: () => void
   canSend: boolean
+  /** True if `item.entry` is in AuctionHouseBot.DisabledCustomItemIDs. */
+  excluded: boolean
+  /** True if mod-ah-bot-plus is installed (otherwise gavel hidden). */
+  ahbotAvailable: boolean
+  /** True while the toggle network call is in flight for this entry. */
+  gavelBusy: boolean
+  onToggleExclude: (excluded: boolean) => void
 }) {
   const quality = QUALITY_COLORS[item.quality] ?? "text-foreground"
   const iconName = iconMap[String(item.display_id)]
@@ -430,15 +513,72 @@ function ItemTile({
       >
         <ArrowSquareOutIcon className="size-4" />
       </a>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={onSend}
-        disabled={!canSend}
-        className="shrink-0"
-      >
-        Send
-      </Button>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onSend}
+          disabled={!canSend}
+          className="shrink-0"
+        >
+          Send
+        </Button>
+        {ahbotAvailable && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={
+                  excluded
+                    ? "AH Bot: excluded — open menu"
+                    : "AH Bot menu"
+                }
+                title={
+                  excluded
+                    ? "Excluded from AH Bot listings"
+                    : "Auction House Bot menu"
+                }
+                disabled={gavelBusy}
+                className={cn(
+                  // Hidden by default; flashes in on hover. Always
+                  // visible (and red) when excluded so the user can
+                  // see at a glance which items they've taken off the
+                  // bot's roster.
+                  "rounded p-1 transition-opacity",
+                  "opacity-0 group-hover:opacity-100",
+                  excluded &&
+                    "opacity-100 text-rose-600 dark:text-rose-400",
+                  !excluded && "text-muted-foreground",
+                  "hover:text-foreground disabled:opacity-50"
+                )}
+              >
+                <GavelIcon className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuLabel className="text-xs">
+                AH Bot — #{item.entry}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {excluded ? (
+                <DropdownMenuItem
+                  onSelect={() => onToggleExclude(true)}
+                  className="text-xs"
+                >
+                  Re-include in listings
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem
+                  onSelect={() => onToggleExclude(false)}
+                  className="text-xs"
+                >
+                  Exclude from listings
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </div>
   )
 }

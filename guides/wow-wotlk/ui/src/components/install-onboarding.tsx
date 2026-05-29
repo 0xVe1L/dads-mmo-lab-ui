@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils"
 type ServerType = "base" | "npcbots" | "playerbots"
 
 type ModuleKey =
-  | "mod-ah-bot"
+  | "mod-ah-bot-plus"
   | "mod-solocraft"
   | "mod-autobalance"
   | "mod-transmog"
@@ -42,10 +42,11 @@ type ModuleKey =
 // zero-question install.
 type AhBotConfig = {
   itemsPerCycle: number
-  /** 0 = long (1-3d), 1 = medium (1-24h), 2 = short (10-60min). */
+  /** 0 = long (1-3d), 1 = medium (1-24h), 2 = short (10-60min).
+   * Bash side translates this to mod-ah-bot-plus's
+   * ListingExpireTimeInSecondsMin/Max pair. */
   elapsingTimeClass: 0 | 1 | 2
   enableBuyer: boolean
-  vendorItems: boolean
   professionItems: boolean
 }
 
@@ -67,7 +68,7 @@ type FormState = {
 const DEFAULT_STATE: FormState = {
   serverType: "playerbots",
   modules: {
-    "mod-ah-bot": true,
+    "mod-ah-bot-plus": true,
     "mod-solocraft": true,
     "mod-autobalance": true,
     "mod-transmog": true,
@@ -88,7 +89,6 @@ const DEFAULT_STATE: FormState = {
     itemsPerCycle: 200,
     elapsingTimeClass: 1,
     enableBuyer: true,
-    vendorItems: false,
     professionItems: true,
   },
   // Defaults preserve a "vanilla feel without difficulty tweaks" — the
@@ -109,7 +109,7 @@ const MODULES: {
   blurb: string
   Icon: React.ComponentType<{ className?: string }>
 }[] = [
-  { key: "mod-ah-bot", label: "Auction House Bot", blurb: "Populates the AH with items so the economy isn't empty.", Icon: StorefrontIcon },
+  { key: "mod-ah-bot-plus", label: "Auction House Bot", blurb: "Populates the AH with items so the economy isn't empty.", Icon: StorefrontIcon },
   { key: "mod-solocraft", label: "Solocraft", blurb: "Scales dungeons and raids down to a single player.", Icon: UserIcon },
   { key: "mod-autobalance", label: "Auto Balance", blurb: "Dynamic difficulty based on party size and gear.", Icon: ScalesIcon },
   { key: "mod-transmog", label: "Transmogrification", blurb: "Change the appearance of your gear.", Icon: PaletteIcon },
@@ -164,13 +164,13 @@ const STEP_DEFS: Record<StepId, Omit<StepDef, "id">> = {
   summary: {
     title: "Ready to install",
     description:
-      "Review your choices. Installing Playerbots compiles AzerothCore from source — plan for 2–4 hours and keep your device plugged in.",
+      "Review your choices. Installing Playerbots compiles AzerothCore from source — plan for about 1.5 hrs and keep your device plugged in.",
   },
 }
 
 function buildSteps(state: FormState): StepDef[] {
   const order: StepId[] = ["server-type", "modules"]
-  if (state.modules["mod-ah-bot"]) order.push("ahbot-config")
+  if (state.modules["mod-ah-bot-plus"]) order.push("ahbot-config")
   if (state.modules["mod-individual-progression"]) order.push("ip-config")
   order.push("admin", "summary")
   return order.map((id) => ({ id, ...STEP_DEFS[id] }))
@@ -229,7 +229,7 @@ export function InstallOnboarding({
         // otherwise we'd send AH Bot config for an install that doesn't
         // include AH Bot.
         moduleConfig: {
-          ahbot: state.modules["mod-ah-bot"] ? state.ahbot : undefined,
+          ahbot: state.modules["mod-ah-bot-plus"] ? state.ahbot : undefined,
           ip: state.modules["mod-individual-progression"] ? state.ip : undefined,
         },
       })
@@ -616,13 +616,6 @@ function AhBotConfigStep({
         checked={value.professionItems}
         onChange={(v) => onChange({ ...value, professionItems: v })}
       />
-      <ToggleRow
-        id="ahbot-vendor"
-        label="Include vendor-purchasable items"
-        blurb="Adds vendor goods to the AH (more variety, less authentic)."
-        checked={value.vendorItems}
-        onChange={(v) => onChange({ ...value, vendorItems: v })}
-      />
     </div>
   )
 }
@@ -710,7 +703,7 @@ function SummaryStep({
   // Modules without onboarding config return null and just render as a
   // plain badge.
   const moduleConfigSummary = (key: ModuleKey): string | null => {
-    if (key === "mod-ah-bot") {
+    if (key === "mod-ah-bot-plus") {
       const durationLabel =
         state.ahbot.elapsingTimeClass === 2
           ? "short"
@@ -719,7 +712,6 @@ function SummaryStep({
             : "medium"
       const extras = [
         state.ahbot.enableBuyer ? "buyer on" : null,
-        state.ahbot.vendorItems ? "vendor items" : null,
         state.ahbot.professionItems ? "profession items" : null,
       ].filter(Boolean) as string[]
       const extrasStr = extras.length > 0 ? ` · ${extras.join(", ")}` : ""
@@ -771,7 +763,7 @@ function SummaryStep({
         <span className="font-mono text-xs">~/wow-server-playerbots</span>
       </SummaryRow>
       <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
-        Playerbots compiles AzerothCore from source. Expect 2–4 hours on a Steam Deck.
+        Playerbots compiles AzerothCore from source. Expect about 1.5 hrs on a Steam Deck.
         Modules are compiled into the same build — no extra time. Keep your
         device plugged in and don't let it sleep.
       </div>

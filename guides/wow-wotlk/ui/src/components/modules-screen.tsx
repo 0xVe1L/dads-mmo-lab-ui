@@ -54,8 +54,8 @@ export function ModulesEmbedded() {
   const sorted = React.useMemo(() => {
     const copy = [...installedModules]
     copy.sort((a, b) => {
-      if (a.key === "mod-ah-bot" && ahbotNeedsConfig) return -1
-      if (b.key === "mod-ah-bot" && ahbotNeedsConfig) return 1
+      if (a.key === "mod-ah-bot-plus" && ahbotNeedsConfig) return -1
+      if (b.key === "mod-ah-bot-plus" && ahbotNeedsConfig) return 1
       return a.name.localeCompare(b.name)
     })
     return copy
@@ -93,7 +93,7 @@ export function ModulesEmbedded() {
           type="multiple"
           // Default open: AH Bot (if it needs config) so the user
           // immediately sees the call-to-action context.
-          defaultValue={ahbotNeedsConfig ? ["mod-ah-bot"] : []}
+          defaultValue={ahbotNeedsConfig ? ["mod-ah-bot-plus"] : []}
           className="space-y-2"
         >
           {sorted.map((m) => (
@@ -167,7 +167,7 @@ function ModuleSection({
   ahbotNeedsConfig: boolean
   onOpenAhbotWizard: () => void
 }) {
-  const isAhbot = module.key === "mod-ah-bot"
+  const isAhbot = module.key === "mod-ah-bot-plus"
   const needsAction = isAhbot && ahbotNeedsConfig
 
   // Surface the most-useful conf entries first per module. Keys we
@@ -309,16 +309,17 @@ function EmptyState() {
  */
 function curatedKeysFor(moduleKey: string): string[] {
   switch (moduleKey) {
-    case "mod-ah-bot":
+    case "mod-ah-bot-plus":
       return [
         "AuctionHouseBot.EnableSeller",
-        "AuctionHouseBot.EnableBuyer",
-        "AuctionHouseBot.Account",
-        "AuctionHouseBot.GUID",
+        "AuctionHouseBot.Buyer.Enabled",
+        "AuctionHouseBot.GUIDs",
         "AuctionHouseBot.ItemsPerCycle",
-        "AuctionHouseBot.ElapsingTimeClass",
-        "AuctionHouseBot.VendorItems",
-        "AuctionHouseBot.ProfessionItems",
+        "AuctionHouseBot.ListingExpireTimeInSecondsMin",
+        "AuctionHouseBot.ListingExpireTimeInSecondsMax",
+        "AuctionHouseBot.MinutesBetweenBuyCycle",
+        "AuctionHouseBot.MinutesBetweenSellCycle",
+        "AuctionHouseBot.MaxBuyoutPriceInCopper",
       ]
     case "mod-solocraft":
       return [

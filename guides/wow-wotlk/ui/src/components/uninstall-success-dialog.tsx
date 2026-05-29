@@ -69,29 +69,30 @@ export function UninstallSuccessDialog() {
               <div className="rounded-md border border-sky-500/40 bg-sky-500/5 p-3 text-xs text-sky-900 dark:text-sky-200">
                 <div className="mb-1.5 flex items-center gap-2 font-semibold">
                   <SteamLogoIcon className="size-4" />
-                  One more cleanup step — in Steam
+                  Want to tidy up Steam too?
                 </div>
                 <p className="leading-snug">
-                  Steam keeps shortcuts in memory while it's running, so we
-                  can't safely edit your library from here. To finish a clean
-                  uninstall:
+                  Nothing else is removed automatically. If you're planning
+                  to reinstall soon, leaving everything as-is means it just
+                  works next time. If you're done for now, you can remove
+                  these at your own pace:
                 </p>
-                <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 leading-snug">
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 leading-snug">
                   <li>
-                    Open Steam, find your <strong>WoW 3.3.5a</strong> entry,
-                    right-click → Manage → <em>Remove non-Steam game from your
-                    library</em>.
+                    Your <strong>WoW 3.3.5a</strong> Steam shortcut —
+                    right-click in Steam → Manage → <em>Remove non-Steam
+                    game from your library</em>.
                   </li>
                   <li>
-                    If you are deleting <strong>The Lab</strong>, you may also
-                    remove it from Steam this way.
+                    <strong>The Lab</strong> Steam shortcut, if you added
+                    one — same right-click flow.
                   </li>
                   <li>
-                    Your WoW 3.3.5a client folder is still on disk — keep it
-                    for next time, or delete it by hand when you're done with
-                    WoW.
+                    Your <strong>WoW 3.3.5a client folder</strong> is still
+                    on disk and untouched. Keep it for next time, or delete
+                    it by hand when you're ready.
                   </li>
-                </ol>
+                </ul>
               </div>
             </div>
           </AlertDialogDescription>

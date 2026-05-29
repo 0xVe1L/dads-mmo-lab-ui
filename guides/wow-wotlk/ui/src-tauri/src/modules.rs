@@ -23,7 +23,7 @@ use serde::Serialize;
 /// which conf basename to look up. The `conf_basename` is the
 /// `.conf.dist` name without the `.dist` suffix.
 const MODULE_REGISTRY: &[(&str, &str)] = &[
-    ("mod-ah-bot", "Auction House Bot"),
+    ("mod-ah-bot-plus", "Auction House Bot"),
     ("mod-solocraft", "Solocraft"),
     ("mod-aoe-loot", "AoE Loot"),
     ("mod-learn-spells", "Learn Spells on Levelup"),
@@ -35,7 +35,7 @@ const MODULE_REGISTRY: &[(&str, &str)] = &[
 
 #[derive(Serialize, Clone, Debug)]
 pub struct InstalledModule {
-    /// Repo key (e.g. `mod-ah-bot`).
+    /// Repo key (e.g. `mod-ah-bot-plus`).
     pub key: String,
     /// Display name (e.g. "Auction House Bot").
     pub name: String,
@@ -333,24 +333,61 @@ fn conf_set_inplace(path: &Path, key: &str, value: &str) -> Result<(), String> {
 }
 
 /// Write AH Bot character config to the active mod_ahbot.conf and flip
-/// EnableSeller on. The caller is expected to follow up with
-/// `restart_server` (a frontend chain — keeps this command synchronous).
+/// EnableSeller on. Caller follows up with `restart_server` (frontend
+/// chain — keeps this command synchronous).
+///
+/// mod-ah-bot-plus schema: no more `Account` or `GUID` (singular) fields.
+/// Only `GUIDs` (the bot's character GUID), and EnableSeller is a real
+/// boolean encoded as the literal string `true`/`false`.
 #[tauri::command]
-pub fn configure_ahbot_character(account: u64, guid: u64) -> Result<(), String> {
+pub fn configure_ahbot_character(guid: u64) -> Result<(), String> {
     let install_path = first_install_path()
         .ok_or_else(|| "no install detected".to_string())?;
     let modules_dir = install_path.join("modules");
-    let module_dir = modules_dir.join("mod-ah-bot");
+    let module_dir = modules_dir.join("mod-ah-bot-plus");
     if !module_dir.is_dir() {
-        return Err("mod-ah-bot is not installed".into());
+        return Err("mod-ah-bot-plus is not installed".into());
     }
     let conf_path = find_active_conf(&install_path, &module_dir)
         .ok_or_else(|| "mod_ahbot.conf not found — has the server run at least once?".to_string())?;
 
-    conf_set_inplace(&conf_path, "AuctionHouseBot.Account", &account.to_string())?;
-    conf_set_inplace(&conf_path, "AuctionHouseBot.GUID", &guid.to_string())?;
-    conf_set_inplace(&conf_path, "AuctionHouseBot.GUIDs", &format!("\"{guid}\""))?;
-    conf_set_inplace(&conf_path, "AuctionHouseBot.EnableSeller", "1")?;
+    conf_set_inplace(&conf_path, "AuctionHouseBot.GUIDs", &guid.to_string())?;
+    conf_set_inplace(&conf_path, "AuctionHouseBot.EnableSeller", "true")?;
 
     Ok(())
+}
+
+/// Generic conf updater — used by the Auction House page (Basic +
+/// Advanced tabs) and by the Item Database gavel dropdown. Writes
+/// every `(key, value)` pair into the active conf for the given
+/// module. Does NOT trigger a worldserver reload — callers chain
+/// `reload_ahbot` (or its module-specific cousin) so the UI keeps
+/// control over batching multiple field changes into one reload.
+#[tauri::command]
+pub fn update_module_conf(
+    module_key: String,
+    fields: HashMap<String, String>,
+) -> Result<(), String> {
+    let install_path = first_install_path()
+        .ok_or_else(|| "no install detected".to_string())?;
+    let module_dir = install_path.join("modules").join(&module_key);
+    if !module_dir.is_dir() {
+        return Err(format!("{module_key} is not installed"));
+    }
+    let conf_path = find_active_conf(&install_path, &module_dir)
+        .ok_or_else(|| "active conf not found — has the server run at least once?".to_string())?;
+    for (k, v) in &fields {
+        conf_set_inplace(&conf_path, k, v)?;
+    }
+    Ok(())
+}
+
+/// Issue `.ahbot reload` via SOAP so mod-ah-bot-plus re-reads its
+/// conf without a worldserver restart. Returns the raw SOAP output
+/// for the frontend to surface in a toast. Errors propagate (auth
+/// failure, SOAP unreachable, command not found).
+#[tauri::command]
+pub async fn reload_ahbot() -> Result<String, String> {
+    let result = crate::soap::execute_command(".ahbot reload").await?;
+    Ok(result.output)
 }

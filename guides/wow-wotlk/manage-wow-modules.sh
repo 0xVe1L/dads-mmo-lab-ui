@@ -87,7 +87,7 @@ DB_ROOT_PASSWORD="password"   # acore-docker default
 
 # Module registry: key|name|repo url|sql dirs (comma-sep)
 declare -a MODULE_REGISTRY=(
-    "mod-ah-bot|Auction House Bot|https://github.com/azerothcore/mod-ah-bot.git|world"
+    "mod-ah-bot-plus|Auction House Bot|https://github.com/NathanHandley/mod-ah-bot-plus.git|"
     "mod-solocraft|Solocraft (solo dungeon/raid scaling)|https://github.com/azerothcore/mod-solocraft.git|world"
     "mod-aoe-loot|AoE Loot|https://github.com/azerothcore/mod-aoe-loot.git|world"
     "mod-learn-spells|Learn Spells on Levelup|https://github.com/azerothcore/mod-learn-spells.git|world"
@@ -512,7 +512,7 @@ server_attach() {
 # module: ls modules/<mod>/data/sql/db-<dbname>/
 # Format: "module-key|database|filename1.sql filename2.sql ..."
 declare -a MODULE_UPDATE_FILES=(
-    "mod-ah-bot|acore_world|auctionhousebot_professionItems.sql mod_auctionhousebot.sql"
+    "mod-ah-bot-plus|acore_world|"
     "mod-transmog|acore_characters|trasmorg.sql"
     "mod-1v1-arena|acore_characters|"
     "mod-solocraft|acore_world|"
@@ -559,7 +559,7 @@ show_module_tracking() {
     local key="$1"
     echo ""
     echo -e "${WHITE}Currently tracked updates that mention '${key}' or related terms:${RST}"
-    local stripped="${key#mod-}"  # mod-ah-bot → ah-bot
+    local stripped="${key#mod-}"  # mod-ah-bot-plus → ah-bot-plus
     local term1="${stripped//-/_}"  # ah-bot → ah_bot (covers underscored names)
     local rows_world rows_chars rows_auth
     rows_world=$(docker exec "$DB_CONTAINER" mysql -uroot -p"$DB_ROOT_PASSWORD" -N \
@@ -968,8 +968,8 @@ list_characters() {
 configure_ahbot() {
     print_step "Configuring Auction House Bot"
 
-    if ! module_is_installed "mod-ah-bot"; then
-        print_error "mod-ah-bot is not installed yet!"
+    if ! module_is_installed "mod-ah-bot-plus"; then
+        print_error "mod-ah-bot-plus is not installed yet!"
         print_info "Add it first via the main menu (Add modules)."
         return 1
     fi
@@ -1031,7 +1031,7 @@ configure_ahbot() {
     local bot_name=$(echo "$bot_info" | cut -f2)
     print_success "Selected: $bot_name (GUID $bot_guid, account $bot_account)"
 
-    local conf_dist="$SERVER_DIR/modules/mod-ah-bot/conf/mod_ahbot.conf.dist"
+    local conf_dist="$SERVER_DIR/modules/mod-ah-bot-plus/conf/mod_ahbot.conf.dist"
     if [ ! -f "$conf_dist" ]; then
         print_error "Couldn't find $conf_dist"
         return 1
@@ -1041,13 +1041,12 @@ configure_ahbot() {
     local conf_active="$SERVER_DIR/conf/modules/mod_ahbot.conf"
     cp "$conf_dist" "$conf_active"
 
+    # mod-ah-bot-plus schema: GUIDs only (no Account field), lowercase
+    # "true"/"false" booleans, Buyer.Enabled instead of EnableBuyer.
     sed -i \
-        -e "s|^AuctionHouseBot.Account *=.*|AuctionHouseBot.Account = ${bot_account}|" \
-        -e "s|^AuctionHouseBot.GUID *=.*|AuctionHouseBot.GUID = ${bot_guid}|" \
-        -e "s|^AuctionHouseBot.GUIDs *=.*|AuctionHouseBot.GUIDs = \"${bot_guid}\"|" \
-        -e "s|^AuctionHouseBot.EnableSeller *=.*|AuctionHouseBot.EnableSeller = 1|" \
-        -e "s|^AuctionHouseBot.EnableBuyer *=.*|AuctionHouseBot.EnableBuyer = 1|" \
-        -e "s|^AHBot.enabled *=.*|AHBot.enabled = 1|" \
+        -e "s|^AuctionHouseBot.GUIDs *=.*|AuctionHouseBot.GUIDs = ${bot_guid}|" \
+        -e "s|^AuctionHouseBot.EnableSeller *=.*|AuctionHouseBot.EnableSeller = true|" \
+        -e "s|^AuctionHouseBot.Buyer.Enabled *=.*|AuctionHouseBot.Buyer.Enabled = true|" \
         "$conf_active"
 
     print_success "Wrote $conf_active"
@@ -1151,7 +1150,7 @@ menu_add() {
     # Special handling: AH Bot needs character configuration after add
     for entry in "${selected[@]}"; do
         IFS='|' read -r key name url sql_dirs <<< "$entry"
-        if [ "$key" = "mod-ah-bot" ]; then
+        if [ "$key" = "mod-ah-bot-plus" ]; then
             echo ""
             print_info "AH Bot is installed but not yet configured."
             if ask_yes_no "Configure AH Bot now (assign a bot character)?"; then
