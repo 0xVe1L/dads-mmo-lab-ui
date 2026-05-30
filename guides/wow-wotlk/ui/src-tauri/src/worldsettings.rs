@@ -11,9 +11,10 @@
 //! so one slider does the intuitive thing. On read we sample a single
 //! representative key per field.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 
 use crate::soap;
 
@@ -170,4 +171,134 @@ pub async fn set_world_settings(settings: WorldSettings) -> Result<String, Strin
             "Saved to worldserver.conf, but couldn't reload live ({e}). Changes apply next time the server starts."
         )),
     }
+}
+
+// ── message of the day ───────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_motd() -> Result<String, String> {
+    let path = worldserver_conf_path()?;
+    let conf = crate::modules::parse_conf(&path);
+    Ok(conf
+        .get("Motd")
+        .map(|v| v.trim().trim_matches('"').to_string())
+        .unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn set_motd(text: String) -> Result<String, String> {
+    // Single line — `.server set motd` takes the rest of the command line.
+    let clean = text.replace(['\n', '\r'], " ");
+    let path = worldserver_conf_path()?;
+    // Persist to conf (best-effort across restarts) and set it live.
+    let escaped = clean.replace('"', "'");
+    crate::modules::conf_set_inplace(&path, "Motd", &format!("\"{escaped}\""))?;
+    match soap::execute_command(&format!(".server set motd {clean}")).await {
+        Ok(_) => Ok("Message of the day updated.".to_string()),
+        Err(e) => Ok(format!(
+            "Saved, but couldn't apply live ({e}). It'll show next time the server starts."
+        )),
+    }
+}
+
+// ── summon a service NPC (mod-transmog "Transmogrifier") to the player ─
+
+fn first_db_container() -> Option<String> {
+    let out = std::process::Command::new("docker")
+        .args(["ps", "--format", "{{.Names}}"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find(|n| n.to_lowercase().contains("database"))
+        .map(|s| s.to_string())
+}
+
+/// Look up the mod-transmog NPC's creature entry by name. Returns None
+/// when mod-transmog isn't installed (no matching creature_template row).
+fn find_transmog_entry() -> Option<u32> {
+    let container = first_db_container()?;
+    let sql = "SELECT entry FROM acore_world.creature_template \
+               WHERE name LIKE '%ransmog%' OR name LIKE '%Transmogrif%' \
+               ORDER BY entry LIMIT 1;";
+    let out = std::process::Command::new("docker")
+        .args([
+            "exec", &container, "mysql", "-uroot", "-ppassword", "-N", "-B", "-e", sql,
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()
+        .and_then(|l| l.trim().parse::<u32>().ok())
+}
+
+/// Resolve the bundled `dml_summon_npc.lua` (resource dir → walk up from
+/// the binary, same strategy as the install/bootstrap scripts).
+fn resolve_eluna_script(app: &AppHandle, name: &str) -> Option<PathBuf> {
+    if let Ok(dir) = app.path().resource_dir() {
+        let candidate = dir.join("eluna-scripts").join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    let exe = std::env::current_exe().ok()?;
+    let mut cursor: Option<&Path> = exe.parent();
+    while let Some(dir) = cursor {
+        let candidate = dir.join("eluna-scripts").join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        cursor = dir.parent();
+    }
+    None
+}
+
+/// Make sure `dml_summon_npc.lua` is present in the install's mounted
+/// `lua_scripts/` dir, copying the bundled copy in if it's missing.
+/// Returns true when a copy was made (caller should reload Eluna).
+fn ensure_summon_script(app: &AppHandle, install: &Path) -> bool {
+    let dest = install.join("lua_scripts").join("dml_summon_npc.lua");
+    if dest.exists() {
+        return false;
+    }
+    let Some(src) = resolve_eluna_script(app, "dml_summon_npc.lua") else {
+        return false;
+    };
+    if let Some(parent) = dest.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::copy(&src, &dest).is_ok()
+}
+
+/// Summon the mod-transmog NPC next to the player via the
+/// `dml_summon_npc` Eluna bridge. Best-effort deploy of the bridge
+/// script if it's missing (newly-added after this install was created).
+#[tauri::command]
+pub async fn summon_transmog_npc(
+    app: AppHandle,
+    character_name: String,
+) -> Result<String, String> {
+    let entry = find_transmog_entry().ok_or_else(|| {
+        "Couldn't find the Transmogrifier NPC — make sure mod-transmog is installed (Settings → Modules)."
+            .to_string()
+    })?;
+
+    if let Some(install) = crate::modules::first_install_path() {
+        if ensure_summon_script(&app, &install) {
+            // The bridge script was just added — nudge mod-ale to (re)load
+            // scripts. `.reload config` re-runs the Eluna config hook.
+            let _ = soap::execute_command(".reload config").await;
+        }
+    }
+
+    let cmd = format!("dml_summon_npc {character_name} {entry}");
+    let _ = soap::execute_command(&cmd).await?;
+    Ok("Transmogrifier summoned — look next to your character in-game.".to_string())
 }

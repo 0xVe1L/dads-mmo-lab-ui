@@ -378,7 +378,7 @@ function ContinentTabs({
   counts: Record<string, number>
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5 rounded-md border border-border bg-muted/30 p-1">
+    <div className="flex w-fit flex-wrap gap-1.5 rounded-md border border-border bg-muted/30 p-1">
       {CONTINENTS.map((c) => (
         <button
           key={c.id}

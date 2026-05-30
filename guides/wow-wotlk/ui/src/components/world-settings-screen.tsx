@@ -1,10 +1,14 @@
 import * as React from "react"
 import {
   ArrowsClockwiseIcon,
+  ChatCircleTextIcon,
   CircleNotchIcon,
   FloppyDiskIcon,
   GlobeHemisphereWestIcon,
+  HardDrivesIcon,
+  SlidersHorizontalIcon,
   SparkleIcon,
+  TShirtIcon,
 } from "@phosphor-icons/react"
 import { toast } from "sonner"
 
@@ -12,8 +16,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { useServerState } from "@/components/server-state-context"
 import { isTauri, trackedInvoke } from "@/lib/tauri"
 import { cn } from "@/lib/utils"
+
+type WorldTab = "rates" | "server"
 
 /**
  * World Settings — curated player-facing global rates from
@@ -124,6 +131,7 @@ export function WorldSettingsScreen() {
   const [loaded, setLoaded] = React.useState<WorldSettings | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
+  const [tab, setTab] = React.useState<WorldTab>("rates")
 
   const load = React.useCallback(async () => {
     if (!isTauri()) {
@@ -182,16 +190,19 @@ export function WorldSettingsScreen() {
       <div>
         <h1 className="flex items-center gap-2 text-xl font-semibold">
           <GlobeHemisphereWestIcon className="size-6 text-primary" weight="fill" />
-          World Settings
+          World
         </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Tune your server's global rates. A multiplier of{" "}
-          <span className="font-medium">1</span> is Blizzlike; higher means
-          faster. Saved changes apply live — no restart.
+          Server-wide settings — rates, message of the day, and other global
+          tweaks. Changes apply live without a restart.
         </p>
       </div>
 
-      {loading ? (
+      <WorldTabs tab={tab} onChange={setTab} />
+
+      {tab === "server" ? (
+        <ServerTab />
+      ) : loading ? (
         <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
           <CircleNotchIcon className="size-4 animate-spin" />
           Loading…
@@ -315,5 +326,192 @@ export function WorldSettingsScreen() {
         </>
       )}
     </div>
+  )
+}
+
+// ── tab bar ───────────────────────────────────────────────────────────
+
+function WorldTabs({
+  tab,
+  onChange,
+}: {
+  tab: WorldTab
+  onChange: (t: WorldTab) => void
+}) {
+  const tabs: { id: WorldTab; label: string; icon: typeof SlidersHorizontalIcon }[] =
+    [
+      { id: "rates", label: "Rates", icon: SlidersHorizontalIcon },
+      { id: "server", label: "Server", icon: HardDrivesIcon },
+    ]
+  return (
+    <div className="flex w-fit flex-wrap gap-1.5 rounded-md border border-border bg-muted/30 p-1">
+      {tabs.map((t) => {
+        const Icon = t.icon
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onChange(t.id)}
+            className={cn(
+              "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+              tab === t.id
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Icon className="size-3.5" />
+            {t.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── server tab (MoTD + service NPCs) ──────────────────────────────────
+
+function ServerTab() {
+  const { selectedCharacter } = useServerState()
+  const [motd, setMotd] = React.useState("")
+  const [loadedMotd, setLoadedMotd] = React.useState("")
+  const [motdLoading, setMotdLoading] = React.useState(true)
+  const [savingMotd, setSavingMotd] = React.useState(false)
+  const [summoning, setSummoning] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!isTauri()) {
+      setMotdLoading(false)
+      return
+    }
+    let cancelled = false
+    trackedInvoke<string>("get_motd")
+      .then((m) => {
+        if (cancelled) return
+        setMotd(m)
+        setLoadedMotd(m)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setMotdLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const saveMotd = async () => {
+    if (!isTauri()) return
+    setSavingMotd(true)
+    try {
+      const msg = await trackedInvoke<string>("set_motd", { text: motd })
+      setLoadedMotd(motd)
+      toast.success("Message of the day set", { description: msg })
+    } catch (e) {
+      toast.error("Couldn't set the message", {
+        description: typeof e === "string" ? e : String(e),
+      })
+    } finally {
+      setSavingMotd(false)
+    }
+  }
+
+  const summonTransmog = async () => {
+    if (!selectedCharacter || !isTauri()) {
+      toast.error("Pick a character from the sidebar first.")
+      return
+    }
+    setSummoning(true)
+    const id = toast.loading("Summoning the Transmogrifier…")
+    try {
+      let online = false
+      try {
+        online = await trackedInvoke<boolean>("is_character_online", {
+          guid: selectedCharacter.guid,
+        })
+      } catch {
+        /* fall through — backend will report if it can't reach the player */
+      }
+      if (!online) {
+        toast.warning(`${selectedCharacter.name} isn't logged in`, {
+          id,
+          description: "Log into the game first — the NPC spawns next to you.",
+        })
+        return
+      }
+      const msg = await trackedInvoke<string>("summon_transmog_npc", {
+        characterName: selectedCharacter.name,
+      })
+      toast.success("Done", { id, description: msg })
+    } catch (e) {
+      toast.error("Couldn't summon the Transmogrifier", {
+        id,
+        description: typeof e === "string" ? e : String(e),
+      })
+    } finally {
+      setSummoning(false)
+    }
+  }
+
+  return (
+    <>
+      {/* Message of the Day */}
+      <div className="rounded-md border border-border bg-card p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <ChatCircleTextIcon className="size-4 text-primary" />
+          <div>
+            <div className="text-sm font-semibold">Message of the Day</div>
+            <div className="text-xs text-muted-foreground">
+              Shown to every player when they log in.
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            value={motd}
+            disabled={motdLoading}
+            placeholder={motdLoading ? "Loading…" : "Welcome to the server!"}
+            onChange={(e) => setMotd(e.target.value)}
+            className="flex-1"
+          />
+          <Button
+            onClick={() => void saveMotd()}
+            disabled={savingMotd || motdLoading || motd === loadedMotd}
+          >
+            {savingMotd ? (
+              <CircleNotchIcon className="size-4 animate-spin" />
+            ) : (
+              <FloppyDiskIcon className="size-4" weight="fill" />
+            )}
+            Set
+          </Button>
+        </div>
+      </div>
+
+      {/* Service NPCs */}
+      <div className="rounded-md border border-border bg-card p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <TShirtIcon className="size-4 text-primary" />
+          <div>
+            <div className="text-sm font-semibold">Transmogrifier</div>
+            <div className="text-xs text-muted-foreground">
+              Bring the transmog NPC to your character (needs mod-transmog
+              installed). It despawns after a few minutes.
+            </div>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => void summonTransmog()}
+          disabled={summoning || !selectedCharacter}
+        >
+          {summoning ? (
+            <CircleNotchIcon className="size-4 animate-spin" />
+          ) : (
+            <TShirtIcon className="size-4" />
+          )}
+          Summon to me
+        </Button>
+      </div>
+    </>
   )
 }

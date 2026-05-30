@@ -47,7 +47,8 @@
       "../../eluna-scripts/dml_gm.lua": "eluna-scripts/dml_gm.lua",
       "../../eluna-scripts/dml_login.lua": "eluna-scripts/dml_login.lua",
       "../../eluna-scripts/dml_uninvite.lua": "eluna-scripts/dml_uninvite.lua",
-      "../../eluna-scripts/dml_whisper.lua": "eluna-scripts/dml_whisper.lua"
+      "../../eluna-scripts/dml_whisper.lua": "eluna-scripts/dml_whisper.lua",
+      "../../eluna-scripts/dml_summon_npc.lua": "eluna-scripts/dml_summon_npc.lua"
     },
     "icon": [
       "icons/32x32.png",

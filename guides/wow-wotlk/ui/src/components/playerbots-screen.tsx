@@ -654,7 +654,7 @@ function BotTypeTabs({
   counts: Record<TabId, number | null>
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5 rounded-md border border-border bg-muted/30 p-1">
+    <div className="flex w-fit flex-wrap gap-1.5 rounded-md border border-border bg-muted/30 p-1">
       {TABS.map((t) => {
         const Icon =
           t.id === "favorites"

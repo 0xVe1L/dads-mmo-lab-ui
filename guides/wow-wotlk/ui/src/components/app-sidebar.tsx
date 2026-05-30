@@ -41,7 +41,7 @@ function buildNavNodes(_ahbotNeedsConfig: boolean): NavNode[] {
     { kind: "item", title: "Teleport", icon: <CompassIcon />, page: "teleport" },
     {
       kind: "item",
-      title: "World Settings",
+      title: "World",
       icon: <GlobeHemisphereWestIcon />,
       page: "worldSettings",
     },

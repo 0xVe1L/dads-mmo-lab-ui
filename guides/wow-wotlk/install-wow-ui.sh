@@ -346,7 +346,7 @@ setup_eluna() {
     # legacy setup_eluna so anything that worked there works here too.
     local copied=0
     local missing=0
-    for script_name in dml_whisper.lua dml_addclass.lua dml_uninvite.lua dml_login.lua dml_gm.lua; do
+    for script_name in dml_whisper.lua dml_addclass.lua dml_uninvite.lua dml_login.lua dml_gm.lua dml_summon_npc.lua; do
         local src="$script_dir/eluna-scripts/$script_name"
         if [ -f "$src" ]; then
             cp "$src" "$lua_scripts_dir/$script_name"
