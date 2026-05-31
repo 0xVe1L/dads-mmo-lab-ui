@@ -69,7 +69,7 @@ chmod +x "$stable"
 # stays in the private repo; a private repo can't serve public OTA updates,
 # so artifacts live here. Keep this in sync with the updater endpoint in
 # src-tauri/tauri.conf.json.
-GH_REPO="invntiv/the-lab"
+GH_REPO="0xVe1L/the-lab"
 version="$(basename "$versioned" | sed -E 's/^TheLab_(.+)_amd64\.AppImage$/\1/')"
 sig_file="${versioned}.sig"
 if [ -f "$sig_file" ]; then
